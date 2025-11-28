@@ -29,7 +29,7 @@ export function ConsolePanel({ className, file }: ConsolePanelProps) {
   }, [consoleLogs]);
 
 
-  const executeJavaScript = () => {
+  const executeJavaScript = async () => {
     if (file.language !== 'javascript') {
       const logEntry: ConsoleLog = {
         id: `${Date.now()}`,
@@ -44,25 +44,62 @@ export function ConsolePanel({ className, file }: ConsolePanelProps) {
     setIsRunning(true);
     clearConsoleLogs();
 
-    setTimeout(() => {
+    try {
+      // Prefer Tauri when available
+      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
         try {
-          const customConsole = {
-            log: (...args: any[]) => addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type: 'log', content: args.map(String), timestamp: new Date() }),
-            error: (...args: any[]) => addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type: 'error', content: args.map(String), timestamp: new Date() }),
-            warn: (...args: any[]) => addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type: 'warn', content: args.map(String), timestamp: new Date() }),
-            info: (...args: any[]) => addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type: 'info', content: args.map(String), timestamp: new Date() }),
-          };
+          const { invoke } = await import('@tauri-apps/api/tauri');
+          const result: any = await invoke('run_js', { code: file.content });
+          if (Array.isArray(result?.logs)) {
+            for (const entry of result.logs) {
+              const type = (entry.type as ConsoleLog['type']) ?? 'log';
+              const content = Array.isArray(entry.content) ? entry.content.map(String) : [String(entry.content ?? '')];
+              addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type, content, timestamp: new Date() });
+            }
+            addConsoleLog({ id: `${Date.now()}`, type: 'info', content: ['✓ Code executed via Tauri'], timestamp: new Date() });
+            return;
+          }
+        } catch { /* fall through to other strategies */ }
+      }
 
-          const func = new Function('console', file.content);
-          func(customConsole);
-
-          addConsoleLog({ id: `${Date.now()}`, type: 'info', content: ['✓ Code executed successfully'], timestamp: new Date() });
-        } catch (error: any) {
-          addConsoleLog({ id: `${Date.now()}`, type: 'error', content: [`❌ Execution Error: ${error.message}`], timestamp: new Date() });
-        } finally {
-          setIsRunning(false);
+      // Electron bridge
+      // @ts-ignore
+      const bridge = (window as any)?.appBridge;
+      if (bridge?.runJS) {
+        const result = await bridge.runJS(file.content);
+        if (Array.isArray(result?.logs)) {
+          for (const entry of result.logs) {
+            const type = entry.type as ConsoleLog['type'] ?? 'log';
+            const content = Array.isArray(entry.content) ? entry.content.map(String) : [String(entry.content ?? '')];
+            addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type, content, timestamp: new Date() });
+          }
         }
-    }, 50) // Small delay to allow UI to update
+        addConsoleLog({ id: `${Date.now()}`, type: 'info', content: ['✓ Code executed in Node'], timestamp: new Date() });
+      } else {
+        setTimeout(() => {
+          try {
+            const customConsole = {
+              log: (...args: any[]) => addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type: 'log', content: args.map(String), timestamp: new Date() }),
+              error: (...args: any[]) => addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type: 'error', content: args.map(String), timestamp: new Date() }),
+              warn: (...args: any[]) => addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type: 'warn', content: args.map(String), timestamp: new Date() }),
+              info: (...args: any[]) => addConsoleLog({ id: `${Date.now()}-${Math.random()}`, type: 'info', content: args.map(String), timestamp: new Date() }),
+            };
+            const func = new Function('console', file.content);
+            func(customConsole);
+            addConsoleLog({ id: `${Date.now()}`, type: 'info', content: ['✓ Code executed successfully'], timestamp: new Date() });
+          } catch (error: any) {
+            addConsoleLog({ id: `${Date.now()}`, type: 'error', content: [`❌ Execution Error: ${error.message}`], timestamp: new Date() });
+          } finally {
+            setIsRunning(false);
+          }
+        }, 50);
+        return;
+      }
+    } catch (error: any) {
+      addConsoleLog({ id: `${Date.now()}`, type: 'error', content: [`❌ Execution Error: ${error.message}`], timestamp: new Date() });
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   const getLogColor = (type: ConsoleLog['type']) => {
@@ -144,7 +181,7 @@ export function ConsolePanel({ className, file }: ConsolePanelProps) {
               </p>
             </div>
           ) : (
-            consoleLogs.map((log) => (
+            consoleLogs.map((log: ConsoleLog) => (
               <div
                 key={log.id}
                 className={cn(

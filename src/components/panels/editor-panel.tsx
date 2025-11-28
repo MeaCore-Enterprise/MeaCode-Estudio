@@ -85,7 +85,7 @@ function AiIntellisensePanel() {
             {isLoading && Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-4 w-full my-2"/>)}
             {!isLoading && suggestions.length > 0 ? (
                <ul className="space-y-2 font-code text-sm">
-                {suggestions.map((s, i) => <li key={i} className="p-2 bg-background rounded">{s}</li>)}
+                {suggestions.map((s: string, i: number) => <li key={i} className="p-2 bg-background rounded">{s}</li>)}
               </ul>
             ) : !isLoading && <p className="text-xs text-muted-foreground text-center pt-8">No suggestions yet.</p>}
           </ScrollArea>
@@ -112,13 +112,72 @@ export function EditorPanel() {
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState('editor');
   const { updatePreview, openInNewTab, isLoading: isPreviewLoading } = usePreview(activeFile);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const changeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMobile = useIsMobile();
   const { theme } = useTheme();
+  const [isLowSpec, setIsLowSpec] = useState(false);
   
-  const handleEditorDidMount = (editorInstance: editor.IStandaloneCodeEditor) => {
+  const handleEditorDidMount = (editorInstance: editor.IStandaloneCodeEditor, monaco?: any) => {
     editorRef.current = editorInstance;
     editorInstance.focus();
+    if (monaco?.languages?.typescript) {
+      const ts = monaco.languages.typescript;
+      ts.javascriptDefaults.setCompilerOptions({
+        allowJs: true,
+        checkJs: true,
+        target: ts.ScriptTarget.ES2022,
+        allowNonTsExtensions: true,
+        module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeJs,
+        noEmit: true,
+        jsx: ts.JsxEmit.ReactJSX,
+        typeRoots: ['node_modules/@types']
+      });
+      ts.typescriptDefaults.setCompilerOptions({
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeJs,
+        noEmit: true,
+        jsx: ts.JsxEmit.ReactJSX,
+        typeRoots: ['node_modules/@types']
+      });
+      ts.typescriptDefaults.setDiagnosticsOptions({ noSemanticValidation: false, noSyntaxValidation: false });
+      ts.javascriptDefaults.setDiagnosticsOptions({ noSemanticValidation: false, noSyntaxValidation: false });
+      ts.typescriptDefaults.setEagerModelSync(true);
+      ts.javascriptDefaults.setEagerModelSync(true);
+    }
   };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        let info: any = null;
+        // Prefer Tauri when available
+        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+          try {
+            const { invoke } = await import('@tauri-apps/api/tauri');
+            info = await invoke('get_info');
+          } catch {}
+        }
+        // Fallback to Electron bridge if present
+        if (!info) {
+          // @ts-ignore
+          info = await (window as any)?.appBridge?.getInfo?.();
+        }
+        if (info) {
+          const memGB = info.totalmem ? info.totalmem / (1024 * 1024 * 1024) : 0;
+          const cpus = info.cpus || 0;
+          setIsLowSpec(cpus > 0 && (cpus <= 4 || (memGB > 0 && memGB <= 8)));
+        }
+      } catch {}
+    })();
+    return () => {
+      if (changeTimerRef.current) {
+        clearTimeout(changeTimerRef.current);
+        changeTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleInsertText = (text: string) => {
     const editor = editorRef.current;
@@ -157,15 +216,16 @@ export function EditorPanel() {
   const editorOptions: editor.IStandaloneEditorConstructionOptions = {
     fontSize: 14,
     fontFamily: "'Source Code Pro', monospace",
-    minimap: { enabled: !isMobile },
+    minimap: { enabled: !isMobile && !isLowSpec },
     scrollBeyondLastLine: false,
     wordWrap: 'on',
     automaticLayout: true,
     tabSize: 2,
     insertSpaces: true,
-    smoothScrolling: true,
+    smoothScrolling: !isLowSpec,
     cursorBlinking: 'smooth',
-    cursorSmoothCaretAnimation: 'on',
+    cursorSmoothCaretAnimation: isLowSpec ? 'off' : 'on',
+    fontLigatures: !isLowSpec,
     quickSuggestions: { other: true, comments: false, strings: false },
     suggestOnTriggerCharacters: true,
     acceptSuggestionOnCommitCharacter: true,
@@ -201,7 +261,13 @@ export function EditorPanel() {
             language={activeFile.language}
             theme={theme === 'dark' ? 'vs-dark' : 'light'}
             value={activeFile.content}
-            onChange={(value) => updateFileContent(activeFile.id, value || '')}
+            onChange={(value: string | undefined) => {
+              const next = value || '';
+              if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
+              changeTimerRef.current = setTimeout(() => {
+                updateFileContent(activeFile.id, next);
+              }, 120);
+            }}
             onMount={handleEditorDidMount}
             options={editorOptions}
           />

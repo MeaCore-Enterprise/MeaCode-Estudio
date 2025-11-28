@@ -1,0 +1,20 @@
+[package]
+name = "meacode-estudio"
+version = "0.1.0"
+edition = "2021"
+description = "MeaCode Estudio"
+authors = ["MeaCode"]
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "1.5", features = ["shell-open"] }
+sysinfo = { version = "0.30", default-features = false, features = ["system"] }
+num_cpus = "1.16"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
