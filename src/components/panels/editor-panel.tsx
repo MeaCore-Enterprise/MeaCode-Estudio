@@ -155,8 +155,10 @@ export function EditorPanel() {
         // Prefer Tauri when available
         if (typeof window !== 'undefined' && (window as any).__TAURI__) {
           try {
-            const { invoke } = await import('@tauri-apps/api/tauri');
-            info = await invoke('get_info');
+            const invoke = (window as any).__TAURI__?.invoke;
+            if (invoke) {
+              info = await invoke('get_info');
+            }
           } catch {}
         }
         // Fallback to Electron bridge if present
@@ -345,7 +347,12 @@ export function EditorPanel() {
        <Tabs value={activeWorkspaceTab} onValueChange={setActiveWorkspaceTab} className="flex-1 flex flex-col min-h-0">
         <TabsContent value="editor" className="flex-1 m-0 p-2 overflow-hidden flex flex-col">
           {renderEditorContent()}
-           {isMobile && <KeyboardBar language={activeFile.language} onInsert={handleInsertText} />}
+           {isMobile && (
+             <KeyboardBar
+               language={activeFile.language === 'html' ? 'html' : activeFile.language === 'python' ? 'python' : 'javascript'}
+               onInsert={handleInsertText}
+             />
+           )}
         </TabsContent>
         <TabsContent value="console" className="flex-1 m-0 overflow-hidden">
             <ConsolePanel file={activeFile} />

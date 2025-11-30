@@ -21,5 +21,8 @@ declare global {
         logs: Array<{ type: 'log' | 'error' | 'warn' | 'info'; content: any[] }>
       }>;
     };
+    __TAURI__?: {
+      invoke: (cmd: string, args?: Record<string, any>) => Promise<any>;
+    }
   }
 }
