@@ -233,31 +233,55 @@ jobs:
                 }
               }
             } else {
-              // Fallback to classic repo Projects
-              try {
-                const projects = await github.request('GET /repos/{owner}/{repo}/projects', {
-                  owner, repo,
-                  headers: { accept: 'application/vnd.github.inertia-preview+json' }
+              // Fallback to classic Projects: try repo -> org -> user
+              const inertia = { accept: 'application/vnd.github.inertia-preview+json' };
+              async function addToClassicProject(proj, scope) {
+                const columns = await github.request('GET /projects/{project_id}/columns', {
+                  project_id: proj.id,
+                  headers: inertia,
                 });
-                const proj = projects.data.find(p => p.name === projectName);
-                if (proj) {
-                  const columns = await github.request('GET /projects/{project_id}/columns', {
-                    project_id: proj.id,
-                    headers: { accept: 'application/vnd.github.inertia-preview+json' }
+                const targetCol = columns.data.find(c => c.name.toLowerCase() === classicColumnName.toLowerCase()) || columns.data[0];
+                for (const it of results) {
+                  const issue = await github.rest.issues.get({ owner, repo, issue_number: it.number });
+                  await github.request('POST /projects/columns/{column_id}/cards', {
+                    column_id: targetCol.id,
+                    content_id: issue.data.id,
+                    content_type: 'Issue',
+                    headers: inertia,
                   });
-                  const targetCol = columns.data.find(c => c.name.toLowerCase() === classicColumnName.toLowerCase()) || columns.data[0];
-                  for (const it of results) {
-                    const issue = await github.rest.issues.get({ owner, repo, issue_number: it.number });
-                    await github.request('POST /projects/columns/{column_id}/cards', {
-                      column_id: targetCol.id,
-                      content_id: issue.data.id,
-                      content_type: 'Issue',
-                      headers: { accept: 'application/vnd.github.inertia-preview+json' }
-                    });
-                  }
                 }
-              } catch (e) {
-                core.warning(`No se pudo añadir al Project clásico: ${e.message}`);
+                core.summary.addRaw(`Añadido a Project clásico (${scope}): ${projectName} → columna "${targetCol.name}"`, true);
+                return true;
+              }
+
+              let added = false;
+              // Repo-level classic project
+              try {
+                const projects = await github.request('GET /repos/{owner}/{repo}/projects', { owner, repo, headers: inertia });
+                const proj = projects.data.find(p => p.name === projectName);
+                if (proj) { added = await addToClassicProject(proj, 'repo'); }
+              } catch {}
+
+              // Org-level classic project
+              if (!added) {
+                try {
+                  const orgProjects = await github.request('GET /orgs/{org}/projects', { org: owner, headers: inertia });
+                  const proj = orgProjects.data.find(p => p.name === projectName);
+                  if (proj) { added = await addToClassicProject(proj, 'org'); }
+                } catch {}
+              }
+
+              // User-level classic project
+              if (!added) {
+                try {
+                  const userProjects = await github.request('GET /users/{username}/projects', { username: owner, headers: inertia });
+                  const proj = userProjects.data.find(p => p.name === projectName);
+                  if (proj) { added = await addToClassicProject(proj, 'user'); }
+                } catch {}
+              }
+
+              if (!added) {
+                core.warning('No se encontró un Project clásico llamado "' + projectName + '" en repo/org/user, o faltan permisos. Crea el Project o usa uno de Project v2 con el mismo nombre.');
               }
             }
 
