@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { pickFolder, readDirectory, readText, writeText, saveDialog, getAppConfigDir, pathJoin, detectLanguageByExt, type FsTreeItem } from '@/lib/fs-tauri';
 
 export interface FileTab {
   id: string;
@@ -8,6 +9,7 @@ export interface FileTab {
   language: 'javascript' | 'python' | 'html' | 'css' | 'json';
   content: string;
   isDirty: boolean;
+  path?: string | null;
 }
 
 export interface ConsoleLog {
@@ -22,6 +24,8 @@ interface EditorContextType {
   files: FileTab[];
   activeFileId: string;
   activeFile: FileTab | null;
+  workspaceRoot: string | null;
+  fsTree: FsTreeItem[];
   
   // Acciones de archivos
   createFile: (name: string, language: FileTab['language']) => void;
@@ -29,6 +33,9 @@ interface EditorContextType {
   closeFile: (fileId: string) => void;
   setActiveFile: (fileId: string) => void;
   saveFile: (fileId: string) => void;
+  saveFileAs: (fileId: string) => Promise<void>;
+  openFolder: () => Promise<void>;
+  openFileFromDisk: (fullPath: string) => Promise<void>;
   
   // Estado de la console
   consoleLogs: ConsoleLog[];
@@ -56,6 +63,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       language: 'javascript',
       content: 'function greet() {\n  console.log("Hello from MeaCode Estudio!");\n}\ngreet();\n',
       isDirty: false,
+      path: null,
     },
     {
       id: 'default-html',
@@ -63,9 +71,12 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       language: 'html',
       content: '<h1>Welcome to MeaCode Estudio</h1>\n<p>Start coding!</p>',
       isDirty: false,
+      path: null,
     },
   ]);
   const [activeFileId, setActiveFileId] = useState('default-js');
+  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
+  const [fsTree, setFsTree] = useState<FsTreeItem[]>([]);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -86,7 +97,8 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       name,
       language,
       content: '',
-      isDirty: true, // New file is dirty by default
+      isDirty: true,
+      path: null,
     };
     
     setFiles(prev => [...prev, newFile]);
@@ -135,15 +147,79 @@ export function EditorProvider({ children }: { children: ReactNode }) {
   }, [activeFileId]);
 
   const saveFile = useCallback((fileId: string) => {
-    setFiles(prev => prev.map(file => 
-      file.id === fileId 
-        ? { ...file, isDirty: false }
-        : file
-    ));
-    
-    // Here you can add logic for saving to localStorage or backend
-    console.log('💾 Archivo guardado:', fileId);
+    setFiles(prev => prev.map(file => {
+      if (file.id !== fileId) return file;
+      return { ...file };
+    }));
+    (async () => {
+      const target = files.find(f => f.id === fileId);
+      if (!target) return;
+      if (target.path) {
+        await writeText(target.path, target.content);
+        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, isDirty: false } : f));
+      } else {
+        await saveFileAs(fileId);
+      }
+    })();
+  }, [files]);
+
+  const refreshFsTree = useCallback(async () => {
+    if (!workspaceRoot) return;
+    try {
+      const next = await readDirectory(workspaceRoot);
+      const sameLen = (fsTree?.length || 0) === (next?.length || 0);
+      const key = (list: FsTreeItem[]) => JSON.stringify(list.map(i => ({ n: i.name, d: i.isDir })));
+      if (!sameLen || key(fsTree) !== key(next)) {
+        setFsTree(next);
+      }
+    } catch {}
+  }, [workspaceRoot, fsTree]);
+
+  useEffect(() => {
+    if (!workspaceRoot) return;
+    const id = setInterval(() => { refreshFsTree(); }, 1500);
+    return () => clearInterval(id);
+  }, [workspaceRoot, refreshFsTree]);
+
+  const saveFileAs = useCallback(async (fileId: string) => {
+    const target = files.find(f => f.id === fileId);
+    if (!target) return;
+    let defaultPath: string | undefined = undefined;
+    if (workspaceRoot) {
+      try { defaultPath = await pathJoin(workspaceRoot, target.name); } catch {}
+    }
+    const p = await saveDialog(defaultPath);
+    if (!p) return;
+    await writeText(p, target.content);
+    const name = p.split(/[/\\]/).pop() || target.name;
+    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, name, path: p, isDirty: false } : f));
+  }, [files, workspaceRoot]);
+
+  const openFolder = useCallback(async () => {
+    const dir = await pickFolder();
+    if (!dir) return;
+    setWorkspaceRoot(dir);
+    const tree = await readDirectory(dir);
+    setFsTree(tree);
   }, []);
+
+  const openFileFromDisk = useCallback(async (fullPath: string) => {
+    try {
+      const content = await readText(fullPath);
+      const name = fullPath.split(/[/\\]/).pop() || fullPath;
+      const language = detectLanguageByExt(name);
+      const existing = files.find(f => f.path === fullPath);
+      if (existing) {
+        setFiles(prev => prev.map(f => f.id === existing.id ? { ...f, content } : f));
+        setActiveFileId(existing.id);
+        return;
+      }
+      const id = `file-${Date.now()}`;
+      const file: FileTab = { id, name, language, content, isDirty: false, path: fullPath };
+      setFiles(prev => [...prev, file]);
+      setActiveFileId(id);
+    } catch {}
+  }, [files]);
 
   const getContextForAI = useCallback(() => {
     const context = {
@@ -173,17 +249,70 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     return JSON.stringify(context, null, 2);
   }, [activeFile, files, consoleLogs, previewError, hasErrors]);
 
+  const persistSession = useCallback(async () => {
+    try {
+      const dir = await getAppConfigDir();
+      if (!dir) return;
+      const wsPath = await pathJoin(dir, 'workspace.json');
+      const data = JSON.stringify({ workspaceRoot, files: files.map(f => ({ id: f.id, name: f.name, language: f.language, path: f.path || null })) });
+      await writeText(wsPath, data);
+    } catch {}
+  }, [files, workspaceRoot]);
+
+  const restoreSession = useCallback(async () => {
+    try {
+      const dir = await getAppConfigDir();
+      if (!dir) return;
+      const wsPath = await pathJoin(dir, 'workspace.json');
+      const json = await readText(wsPath);
+      const data = JSON.parse(json);
+      if (data.workspaceRoot) {
+        setWorkspaceRoot(data.workspaceRoot);
+        try { setFsTree(await readDirectory(data.workspaceRoot)); } catch {}
+      }
+      if (Array.isArray(data.files)) {
+        const restored: FileTab[] = [];
+        for (const f of data.files) {
+          let content = '';
+          if (f.path) {
+            try { content = await readText(f.path); } catch {}
+          }
+          restored.push({ id: f.id || `file-${Date.now()}`, name: f.name, language: f.language, content, isDirty: false, path: f.path || null });
+        }
+        if (restored.length > 0) {
+          setFiles(restored);
+          setActiveFileId(restored[0].id);
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => { restoreSession(); }, [restoreSession]);
+  useEffect(() => { persistSession(); }, [persistSession]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      const target = files.find(f => f.isDirty && f.path);
+      if (target) saveFile(target.id);
+    }, 2000);
+    return () => clearInterval(t);
+  }, [files, saveFile]);
+
   return (
     <EditorContext.Provider
       value={{
         files,
         activeFileId,
         activeFile,
+        workspaceRoot,
+        fsTree,
         createFile,
         updateFileContent,
         closeFile,
         setActiveFile: setActiveFileId,
         saveFile,
+        saveFileAs,
+        openFolder,
+        openFileFromDisk,
         consoleLogs,
         hasErrors,
         previewError,
