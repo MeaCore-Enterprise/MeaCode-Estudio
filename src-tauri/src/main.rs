@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::Serialize;
-use sysinfo::{System, SystemExt};
+use sysinfo::System;
 use serde_json::json;
 
 #[derive(Serialize)]
