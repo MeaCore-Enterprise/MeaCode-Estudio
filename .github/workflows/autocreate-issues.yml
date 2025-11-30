@@ -21,11 +21,16 @@ jobs:
             const repo = context.repo.repo;
             const epicNumber = 1;
             const assignee = 'KronoxYT';
-            const projectName = 'Planificación';
-            const classicColumnName = 'To do';
+            const projectName = 'Planificacion';
+            const classicColumnName = 'Por Hacer';
             const avoidDuplicates = true;
             const v2StatusFieldName = 'Status';
-            const v2StatusOptionName = 'Todo';
+            const v2StatusOptionName = 'Por Hacer';
+
+            const eqNoDiacritics = (a,b) => {
+              const norm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+              return norm(a) === norm(b);
+            };
 
             const issuesData = [
               {
@@ -180,14 +185,14 @@ jobs:
                 const orgQuery = `query($login:String!){ organization(login:$login){ projectsV2(first:100){ nodes{ id title } } } }`;
                 const orgRes = await github.graphql(orgQuery, { login: owner });
                 const orgProjects = orgRes.organization?.projectsV2?.nodes || [];
-                const foundOrg = orgProjects.find(p => p.title === projectName);
+                const foundOrg = orgProjects.find(p => eqNoDiacritics(p.title, projectName));
                 if (foundOrg) return foundOrg.id;
               } catch {}
               try {
                 const userQuery = `query($login:String!){ user(login:$login){ projectsV2(first:100){ nodes{ id title } } } }`;
                 const userRes = await github.graphql(userQuery, { login: owner });
                 const userProjects = userRes.user?.projectsV2?.nodes || [];
-                const foundUser = userProjects.find(p => p.title === projectName);
+                const foundUser = userProjects.find(p => eqNoDiacritics(p.title, projectName));
                 if (foundUser) return foundUser.id;
               } catch {}
               return null;
@@ -220,17 +225,30 @@ jobs:
                 }
               } catch {}
 
-              for (const it of results) {
-                const nodeId = await getIssueNodeId(it.number);
-                const addMutation = `mutation($projectId:ID!,$contentId:ID!){ addProjectV2ItemById(input:{projectId:$projectId, contentId:$contentId}){ item { id } } }`;
-                const addRes = await github.graphql(addMutation, { projectId: projectV2Id, contentId: nodeId });
-                const itemId = addRes.addProjectV2ItemById?.item?.id;
+              async function getIssueNodeAndItem(number) {
+                const q = `query($owner:String!,$repo:String!,$number:Int!){ repository(owner:$owner, name:$repo){ issue(number:$number){ id projectItems(first:100){ nodes{ id project{ id } } } } } }`;
+                const r = await github.graphql(q, { owner, repo, number });
+                const issue = r.repository.issue;
+                const exist = (issue.projectItems?.nodes||[]).find(n => n.project?.id === projectV2Id);
+                return { issueNodeId: issue.id, itemId: exist?.id || null };
+              }
+
+              async function setStatus(projectId, itemId) {
                 if (itemId && statusFieldId && statusOptionId) {
                   const setMutation = `mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$optionId:String!){ updateProjectV2ItemFieldValue(input:{ projectId:$projectId, itemId:$itemId, fieldId:$fieldId, value:{ singleSelectOptionId:$optionId }}){ projectV2Item { id } } }`;
-                  try {
-                    await github.graphql(setMutation, { projectId: projectV2Id, itemId, fieldId: statusFieldId, optionId: statusOptionId });
-                  } catch {}
+                  try { await github.graphql(setMutation, { projectId, itemId, fieldId: statusFieldId, optionId: statusOptionId }); } catch {}
                 }
+              }
+
+              for (const it of results) {
+                const { issueNodeId, itemId: existingItemId } = await getIssueNodeAndItem(it.number);
+                let itemId = existingItemId;
+                if (!itemId) {
+                  const addMutation = `mutation($projectId:ID!,$contentId:ID!){ addProjectV2ItemById(input:{projectId:$projectId, contentId:$contentId}){ item { id } } }`;
+                  const addRes = await github.graphql(addMutation, { projectId: projectV2Id, contentId: issueNodeId });
+                  itemId = addRes.addProjectV2ItemById?.item?.id || null;
+                }
+                await setStatus(projectV2Id, itemId);
               }
             } else {
               // Fallback to classic Projects: try repo -> org -> user
@@ -240,7 +258,7 @@ jobs:
                   project_id: proj.id,
                   headers: inertia,
                 });
-                const targetCol = columns.data.find(c => c.name.toLowerCase() === classicColumnName.toLowerCase()) || columns.data[0];
+                const targetCol = columns.data.find(c => eqNoDiacritics(c.name, classicColumnName)) || columns.data[0];
                 for (const it of results) {
                   const issue = await github.rest.issues.get({ owner, repo, issue_number: it.number });
                   await github.request('POST /projects/columns/{column_id}/cards', {
@@ -258,7 +276,7 @@ jobs:
               // Repo-level classic project
               try {
                 const projects = await github.request('GET /repos/{owner}/{repo}/projects', { owner, repo, headers: inertia });
-                const proj = projects.data.find(p => p.name === projectName);
+                const proj = projects.data.find(p => eqNoDiacritics(p.name, 'Planificación'));
                 if (proj) { added = await addToClassicProject(proj, 'repo'); }
               } catch {}
 
@@ -266,7 +284,8 @@ jobs:
               if (!added) {
                 try {
                   const orgProjects = await github.request('GET /orgs/{org}/projects', { org: owner, headers: inertia });
-                  const proj = orgProjects.data.find(p => p.name === projectName);
+                  const proj = orgProjects.data.find(p => eqNoDiacritics(p.name, 'Planificación'));
+                  const proj = orgProjects.data.find(p => eqNoDiacritics(p.name, projectName));
                   if (proj) { added = await addToClassicProject(proj, 'org'); }
                 } catch {}
               }
@@ -275,7 +294,7 @@ jobs:
               if (!added) {
                 try {
                   const userProjects = await github.request('GET /users/{username}/projects', { username: owner, headers: inertia });
-                  const proj = userProjects.data.find(p => p.name === projectName);
+                  const proj = userProjects.data.find(p => eqNoDiacritics(p.name, projectName));
                   if (proj) { added = await addToClassicProject(proj, 'user'); }
                 } catch {}
               }
