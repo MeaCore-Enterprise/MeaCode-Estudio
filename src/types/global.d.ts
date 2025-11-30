@@ -26,3 +26,5 @@ declare global {
     }
   }
 }
+
+declare module '@tauri-apps/api/*';

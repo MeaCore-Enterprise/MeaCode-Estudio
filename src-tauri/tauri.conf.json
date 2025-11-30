@@ -29,9 +29,10 @@
       "csp": null
     },
     "allowlist": {
-      "shell": {
-        "open": true
-      }
+      "shell": { "open": true },
+      "dialog": { "open": true, "save": true },
+      "fs": { "all": true, "scope": ["**"] },
+      "path": { "all": true }
     }
   }
 }
