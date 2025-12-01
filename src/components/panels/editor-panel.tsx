@@ -41,7 +41,7 @@ const components = [
 ];
 
 function AiIntellisensePanel() {
-  const { activeFile, getContextForAI } = useEditor();
+  const { activeFile, getContextForAI, saveFile, saveFileAs } = useEditor();
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -67,6 +67,23 @@ function AiIntellisensePanel() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isSave = (e.key === 's' || e.key === 'S') && (e.ctrlKey || e.metaKey);
+      if (!isSave) return;
+      e.preventDefault();
+      if (!activeFile) return;
+      if (e.shiftKey) {
+        saveFileAs(activeFile.id);
+      } else {
+        saveFile(activeFile.id);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeFile, saveFile, saveFileAs]);
+
 
   return (
     <Card className="flex flex-col rounded-lg h-full border-0 shadow-none bg-transparent">
@@ -107,7 +124,11 @@ export function EditorPanel() {
     createFile,
     closeFile,
     setActiveFile,
-    updateFileContent
+    updateFileContent,
+    saveFile,
+    saveFileAs,
+    workspaceRoot,
+    openFolder
   } = useEditor();
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState('editor');
   const { updatePreview, openInNewTab, isLoading: isPreviewLoading } = usePreview(activeFile);
@@ -116,10 +137,15 @@ export function EditorPanel() {
   const isMobile = useIsMobile();
   const { theme } = useTheme();
   const [isLowSpec, setIsLowSpec] = useState(false);
+  const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
   
   const handleEditorDidMount = (editorInstance: editor.IStandaloneCodeEditor, monaco?: any) => {
     editorRef.current = editorInstance;
     editorInstance.focus();
+    setCursor({ line: 1, column: 1 });
+    editorInstance.onDidChangeCursorPosition((e: any) => {
+      setCursor({ line: e.position.lineNumber, column: e.position.column });
+    });
     if (monaco?.languages?.typescript) {
       const ts = monaco.languages.typescript;
       ts.javascriptDefaults.setCompilerOptions({
@@ -311,29 +337,54 @@ export function EditorPanel() {
           <TabsTrigger value="preview" className="gap-2" onClick={() => setActiveWorkspaceTab('preview')}><Eye size={14}/> {isMobile ? '' : 'Preview'} </TabsTrigger>
           <TabsTrigger value="gallery" className="gap-2" onClick={() => setActiveWorkspaceTab('gallery')}><GalleryVerticalEnd size={14}/> {isMobile ? '' : 'Gallery'} </TabsTrigger>
         </TabsList>
-         {activeWorkspaceTab === 'preview' && (
+        <div className="flex items-center gap-2">
+          {activeWorkspaceTab === 'preview' && (
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={updatePreview}
+                disabled={isPreviewLoading}
+                className="h-8 gap-1.5"
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', isPreviewLoading && 'animate-spin')} />
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={openInNewTab}
+                className="h-8 gap-1.5"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open
+              </Button>
+            </div>
+          )}
           <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={updatePreview}
-              disabled={isPreviewLoading}
-              className="h-8 gap-1.5"
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', isPreviewLoading && 'animate-spin')} />
-              Refresh
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={openInNewTab}
-              className="h-8 gap-1.5"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Open
-            </Button>
+            <Button size="sm" variant="ghost" className="h-8" onClick={handleNewFile}>New</Button>
+            <Button size="sm" variant="ghost" className="h-8" onClick={openFolder}>Open Folder</Button>
+            <Button size="sm" variant="ghost" className="h-8" onClick={() => activeFile && saveFile(activeFile.id)} disabled={!activeFile}>Save</Button>
+            <Button size="sm" variant="ghost" className="h-8" onClick={() => activeFile && saveFileAs(activeFile.id)} disabled={!activeFile}>Save As</Button>
           </div>
-        )}
+        </div>
+      </div>
+
+      <div className="px-2 py-1 border-b bg-background text-xs text-muted-foreground">
+        {(() => {
+          const p = activeFile?.path || activeFile?.name || '';
+          const parts = p.split(/[\\/]+/).filter(Boolean);
+          return (
+            <div className="flex items-center gap-1 overflow-hidden">
+              {parts.map((seg, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <span className="truncate max-w-[160px]">{seg}</span>
+                  {i < parts.length - 1 && <span className="text-muted-foreground">›</span>}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
        <FileTabs 
@@ -379,6 +430,18 @@ export function EditorPanel() {
             </Card>
         </TabsContent>
       </Tabs>
+
+      <div className="h-6 border-t bg-background text-xs text-muted-foreground px-2 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="truncate max-w-[220px]">Workspace: {(workspaceRoot || '').split(/[\\/]+/).filter(Boolean).slice(-1)[0] || '—'}</span>
+          <span>Ln {cursor.line}, Col {cursor.column}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span>{activeFile.language.toUpperCase()}</span>
+          <span>UTF-8</span>
+          <span>LF</span>
+        </div>
+      </div>
     </div>
   );
 }

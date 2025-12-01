@@ -36,6 +36,8 @@ interface EditorContextType {
   saveFileAs: (fileId: string) => Promise<void>;
   openFolder: () => Promise<void>;
   openFileFromDisk: (fullPath: string) => Promise<void>;
+  reloadFsTree: () => Promise<void>;
+  applyRename: (oldPath: string, newPath: string) => void;
   
   // Estado de la console
   consoleLogs: ConsoleLog[];
@@ -163,6 +165,33 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     })();
   }, [files]);
 
+  const applyRename = useCallback((oldPath: string, newPath: string) => {
+    setFiles(prev => prev.map(f => {
+      if (!f.path) return f;
+      if (f.path === oldPath) {
+        const name = newPath.split(/[/\\]/).pop() || f.name;
+        return { ...f, path: newPath, name };
+      }
+      if (oldPath.endsWith('/') || oldPath.endsWith('\\')) {
+        const prefix = oldPath;
+        if (f.path.startsWith(prefix)) {
+          const rest = f.path.slice(prefix.length);
+          const nextPath = newPath + rest;
+          return { ...f, path: nextPath };
+        }
+      } else {
+        const slashOld = oldPath + (/[/\\]$/.test(oldPath) ? '' : (/\\/.test(oldPath) ? '\\' : '/'));
+        if (f.path.startsWith(slashOld)) {
+          const rest = f.path.slice(slashOld.length);
+          const sep = newPath.endsWith('/') || newPath.endsWith('\\') ? '' : (slashOld.includes('\\') ? '\\' : '/');
+          const nextPath = newPath + sep + rest;
+          return { ...f, path: nextPath };
+        }
+      }
+      return f;
+    }));
+  }, []);
+
   const refreshFsTree = useCallback(async () => {
     if (!workspaceRoot) return;
     try {
@@ -202,6 +231,14 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     const tree = await readDirectory(dir);
     setFsTree(tree);
   }, []);
+
+  const reloadFsTree = useCallback(async () => {
+    if (!workspaceRoot) return;
+    try {
+      const tree = await readDirectory(workspaceRoot);
+      setFsTree(tree);
+    } catch {}
+  }, [workspaceRoot]);
 
   const openFileFromDisk = useCallback(async (fullPath: string) => {
     try {
@@ -313,6 +350,8 @@ export function EditorProvider({ children }: { children: ReactNode }) {
         saveFileAs,
         openFolder,
         openFileFromDisk,
+        reloadFsTree,
+        applyRename,
         consoleLogs,
         hasErrors,
         previewError,

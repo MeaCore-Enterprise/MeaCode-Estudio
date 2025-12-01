@@ -51,6 +51,30 @@ export async function writeText(path: string, contents: string): Promise<void> {
   await writeFile({ path, contents });
 }
 
+export async function createDirPath(path: string): Promise<void> {
+  if (!isTauri()) return;
+  const { createDir } = await import('@tauri-apps/api/fs');
+  await createDir(path, { recursive: true });
+}
+
+export async function removeFilePath(path: string): Promise<void> {
+  if (!isTauri()) return;
+  const { removeFile } = await import('@tauri-apps/api/fs');
+  await removeFile(path);
+}
+
+export async function removeDirPath(path: string): Promise<void> {
+  if (!isTauri()) return;
+  const { removeDir } = await import('@tauri-apps/api/fs');
+  await removeDir(path, { recursive: true });
+}
+
+export async function renamePath(oldPath: string, newPath: string): Promise<void> {
+  if (!isTauri()) return;
+  const { renameFile } = await import('@tauri-apps/api/fs');
+  await renameFile(oldPath, newPath);
+}
+
 export async function getAppConfigDir(): Promise<string | null> {
   if (!isTauri()) return null;
   const { appConfigDir } = await import('@tauri-apps/api/path');
@@ -60,6 +84,16 @@ export async function getAppConfigDir(): Promise<string | null> {
 export async function pathJoin(...parts: string[]): Promise<string> {
   const { join } = await import('@tauri-apps/api/path');
   return join(...parts);
+}
+
+export async function pathDirname(p: string): Promise<string> {
+  const { dirname } = await import('@tauri-apps/api/path');
+  return dirname(p);
+}
+
+export async function pathBasename(p: string): Promise<string> {
+  const { basename } = await import('@tauri-apps/api/path');
+  return basename(p);
 }
 
 export function detectLanguageByExt(filename: string): 'javascript' | 'python' | 'html' | 'css' | 'json' {
