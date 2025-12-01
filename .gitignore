@@ -43,3 +43,7 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+
+# tauri / rust build outputs
+/src-tauri/target/
+/src-tauri/target2/

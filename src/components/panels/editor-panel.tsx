@@ -84,6 +84,8 @@ function AiIntellisensePanel() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeFile, saveFile, saveFileAs]);
 
+  
+
 
   return (
     <Card className="flex flex-col rounded-lg h-full border-0 shadow-none bg-transparent">
@@ -287,7 +289,7 @@ export function EditorPanel() {
             key={activeFile.id}
             height="100%"
             language={activeFile.language}
-            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+            theme={theme === 'dark' ? 'vs-dark' : 'vs-light'}
             value={activeFile.content}
             onChange={(value: string | undefined) => {
               const next = value || '';
