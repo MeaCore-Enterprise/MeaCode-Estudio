@@ -8,6 +8,7 @@ import {
   File as FileIcon,
   PanelLeft,
   GitBranch,
+  Search as SearchIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -43,13 +44,18 @@ const SettingsPanel = dynamic(() => import('./panels/settings-panel'), {
   ssr: false,
   loading: () => <div className="p-4"><Skeleton className="h-20 w-full" /></div>,
 });
+const SearchPanel = dynamic(() => import('./panels/search-panel'), {
+  ssr: false,
+  loading: () => <div className="p-4"><Skeleton className="h-20 w-full" /></div>,
+});
 
-export type PanelId = 'editor' | 'chat' | 'files' | 'settings' | 'source-control';
+export type PanelId = 'editor' | 'chat' | 'files' | 'search' | 'settings' | 'source-control';
 
 export const panels: { id: PanelId; icon: React.ElementType; label: string }[] = [
   { id: 'editor', icon: FileIcon, label: 'Editor' },
-  { id: 'chat', icon: MessageSquare, label: 'AI Chat' },
   { id: 'files', icon: FileCode, label: 'Explorer' },
+  { id: 'search', icon: SearchIcon, label: 'Search' },
+  { id: 'chat', icon: MessageSquare, label: 'AI Chat' },
   { id: 'source-control', icon: GitBranch, label: 'Source' },
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
@@ -119,6 +125,9 @@ export function IdeLayout() {
               <TabsContent value="files" className={cn("h-full m-0", activeTab !== 'files' && "hidden")}>
                 <FileExplorerPanel />
               </TabsContent>
+              <TabsContent value="search" className={cn("h-full m-0", activeTab !== 'search' && "hidden")}>
+                <SearchPanel />
+              </TabsContent>
               <TabsContent value="source-control" className={cn("h-full m-0", activeTab !== 'source-control' && "hidden")}>
                 <SourceControlPanel />
               </TabsContent>
@@ -182,9 +191,10 @@ export function IdeLayout() {
       </aside>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PanelId)} className="flex-1 flex">
-          <div className={cn('bg-muted/40 transition-all duration-300 ease-in-out', activeTab !== 'editor' && activeTab !== 'preview' ? 'w-[320px]' : 'w-0')}>
+          <div className={cn('bg-muted/40 transition-all duration-300 ease-in-out', activeTab !== 'editor' ? 'w-[320px]' : 'w-0')}>
             <div className="h-full w-full overflow-y-auto border-r">
                 <TabsContent value="files" className={cn(activeTab !== 'files' && 'h-0 overflow-hidden')}><FileExplorerPanel /></TabsContent>
+                <TabsContent value="search" className={cn(activeTab !== 'search' && 'h-0 overflow-hidden')}><SearchPanel /></TabsContent>
                 <TabsContent value="chat" className={cn(activeTab !== 'chat' && 'h-0 overflow-hidden')}><AiChatPanel /></TabsContent>
                 <TabsContent value="source-control" className={cn(activeTab !== 'source-control' && 'h-0 overflow-hidden')}><SourceControlPanel /></TabsContent>
                 <TabsContent value="settings" className={cn(activeTab !== 'settings' && 'h-0 overflow-hidden')}><SettingsPanel /></TabsContent>

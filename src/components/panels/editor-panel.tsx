@@ -1,4 +1,5 @@
 'use client';
+
 import { useRef, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useTheme } from 'next-themes';
@@ -68,24 +69,7 @@ function AiIntellisensePanel() {
     }
   };
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const isSave = (e.key === 's' || e.key === 'S') && (e.ctrlKey || e.metaKey);
-      if (!isSave) return;
-      e.preventDefault();
-      if (!activeFile) return;
-      if (e.shiftKey) {
-        saveFileAs(activeFile.id);
-      } else {
-        saveFile(activeFile.id);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeFile, saveFile, saveFileAs]);
-
   
-
 
   return (
     <Card className="flex flex-col rounded-lg h-full border-0 shadow-none bg-transparent">
@@ -140,6 +124,7 @@ export function EditorPanel() {
   const { theme } = useTheme();
   const [isLowSpec, setIsLowSpec] = useState(false);
   const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
+  const { getPendingCursor, clearPendingCursor } = useEditor();
   
   const handleEditorDidMount = (editorInstance: editor.IStandaloneCodeEditor, monaco?: any) => {
     editorRef.current = editorInstance;
@@ -227,6 +212,33 @@ export function EditorPanel() {
     handleInsertText(componentSnippet);
     setActiveWorkspaceTab('editor');
   };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isSave = (e.key === 's' || e.key === 'S') && (e.ctrlKey || e.metaKey);
+      if (!isSave) return;
+      e.preventDefault();
+      if (!activeFile) return;
+      if (e.shiftKey) {
+        saveFileAs(activeFile.id);
+      } else {
+        saveFile(activeFile.id);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeFile, saveFile, saveFileAs]);
+
+  useEffect(() => {
+    const ed = editorRef.current;
+    if (!ed || !activeFile) return;
+    const pc = getPendingCursor();
+    if (pc && activeFile.path === pc.path) {
+      ed.setPosition({ lineNumber: pc.line, column: pc.column });
+      ed.revealLineInCenter(pc.line);
+      clearPendingCursor();
+    }
+  }, [activeFile, getPendingCursor, clearPendingCursor]);
 
   const handleNewFile = () => {
     const fileName = prompt('Nombre del archivo:', 'untitled.js');

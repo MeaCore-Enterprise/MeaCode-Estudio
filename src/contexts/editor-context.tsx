@@ -38,6 +38,9 @@ interface EditorContextType {
   openFileFromDisk: (fullPath: string) => Promise<void>;
   reloadFsTree: () => Promise<void>;
   applyRename: (oldPath: string, newPath: string) => void;
+  openFileAt: (fullPath: string, line?: number, column?: number) => Promise<void>;
+  getPendingCursor: () => { path: string; line: number; column: number } | null;
+  clearPendingCursor: () => void;
   
   // Estado de la console
   consoleLogs: ConsoleLog[];
@@ -81,6 +84,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
   const [fsTree, setFsTree] = useState<FsTreeItem[]>([]);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [pendingCursor, setPendingCursor] = useState<{ path: string; line: number; column: number } | null>(null);
 
   const activeFile = files.find(f => f.id === activeFileId) || null;
   const hasErrors = consoleLogs.some(log => log.type === 'error');
@@ -164,6 +168,11 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       }
     })();
   }, [files]);
+
+  
+
+  const getPendingCursor = useCallback(() => pendingCursor, [pendingCursor]);
+  const clearPendingCursor = useCallback(() => { setPendingCursor(null); }, []);
 
   const applyRename = useCallback((oldPath: string, newPath: string) => {
     setFiles(prev => prev.map(f => {
@@ -257,6 +266,13 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       setActiveFileId(id);
     } catch {}
   }, [files]);
+
+  const openFileAt = useCallback(async (fullPath: string, line?: number, column?: number) => {
+    await openFileFromDisk(fullPath);
+    const l = typeof line === 'number' && line > 0 ? line : 1;
+    const c = typeof column === 'number' && column > 0 ? column : 1;
+    setPendingCursor({ path: fullPath, line: l, column: c });
+  }, [openFileFromDisk]);
 
   const getContextForAI = useCallback(() => {
     const context = {
@@ -352,6 +368,9 @@ export function EditorProvider({ children }: { children: ReactNode }) {
         openFileFromDisk,
         reloadFsTree,
         applyRename,
+        openFileAt,
+        getPendingCursor,
+        clearPendingCursor,
         consoleLogs,
         hasErrors,
         previewError,

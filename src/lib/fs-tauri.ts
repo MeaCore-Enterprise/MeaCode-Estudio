@@ -1,4 +1,5 @@
 export type FsTreeItem = { name: string; path: string; isDir: boolean; children?: FsTreeItem[] };
+export type SearchResult = { path: string; line: number; column: number; lineText: string };
 
 function isTauri() {
   return typeof window !== 'undefined' && (window as any).__TAURI__;
@@ -103,4 +104,70 @@ export function detectLanguageByExt(filename: string): 'javascript' | 'python' |
   if (ext === 'css') return 'css';
   if (ext === 'json') return 'json';
   return 'javascript';
+}
+
+export async function searchTextInProject(root: string, query: string, opts?: {
+  caseSensitive?: boolean;
+  isRegex?: boolean;
+  includeExts?: string[];
+  maxResults?: number;
+}): Promise<SearchResult[]> {
+  if (!isTauri() || !root || !query) return [];
+  const { readDir, readTextFile } = await import('@tauri-apps/api/fs');
+  const results: SearchResult[] = [];
+  const max = opts?.maxResults ?? 500;
+  const include = (opts?.includeExts || []).map(e => e.replace(/^\./, '').toLowerCase());
+
+  async function walk(dir: string): Promise<string[]> {
+    const arr: string[] = [];
+    const entries = await readDir(dir, { recursive: false });
+    for (const e of entries) {
+      if (e.children && e.children.length) {
+        const sub = await walk(e.path);
+        for (const s of sub) arr.push(s);
+      } else if (!e.children) {
+        if (include.length > 0) {
+          const ext = (e.name?.split('.').pop() || '').toLowerCase();
+          if (!include.includes(ext)) continue;
+        }
+        arr.push(e.path);
+      }
+      if (results.length >= max) break;
+    }
+    return arr;
+  }
+
+  let files: string[] = [];
+  try { files = await walk(root); } catch { return []; }
+
+  let regex: RegExp | null = null;
+  if (opts?.isRegex) {
+    try { regex = new RegExp(query, opts?.caseSensitive ? 'g' : 'gi'); } catch { regex = null; }
+  }
+
+  for (const p of files) {
+    if (results.length >= max) break;
+    let text: string;
+    try { text = await readTextFile(p); } catch { continue; }
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      if (results.length >= max) break;
+      const lineText = lines[i];
+      if (regex) {
+        regex.lastIndex = 0;
+        const m = regex.exec(lineText);
+        if (m && typeof m.index === 'number') {
+          results.push({ path: p, line: i + 1, column: m.index + 1, lineText });
+        }
+      } else {
+        const hay = opts?.caseSensitive ? lineText : lineText.toLowerCase();
+        const needle = opts?.caseSensitive ? query : query.toLowerCase();
+        const idx = hay.indexOf(needle);
+        if (idx >= 0) {
+          results.push({ path: p, line: i + 1, column: idx + 1, lineText });
+        }
+      }
+    }
+  }
+  return results;
 }

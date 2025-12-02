@@ -62,14 +62,14 @@ export function AIChatPanel() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const {
-    code,
-    language,
-    fileName,
+    activeFile,
     consoleLogs,
     hasErrors,
     getContextForAI,
-    setCode,
+    updateFileContent,
   } = useEditor();
+
+  const lang = activeFile?.language || 'javascript';
 
   useEffect(() => {
     // A little delay to allow the new message to be rendered
@@ -127,7 +127,7 @@ export function AIChatPanel() {
         content: cleanContent.replace(/```suggestion:\w+\n([\s\S]*?)```/g, '').trim(),
         timestamp: new Date(),
         suggestedCode: suggestedCode || undefined,
-        language,
+        language: lang,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -155,7 +155,9 @@ export function AIChatPanel() {
   const confirmApplySuggestion = () => {
     if (!pendingSuggestion) return;
 
-    setCode(pendingSuggestion.code);
+    if (activeFile) {
+      updateFileContent(activeFile.id, pendingSuggestion.code);
+    }
 
     // Marcar como aplicado
     setMessages(prev =>
@@ -221,7 +223,7 @@ export function AIChatPanel() {
 
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-xs font-mono">
-                {language}
+                {lang}
               </Badge>
               {hasErrors && (
                 <Badge variant="destructive" className="text-xs animate-pulse">
