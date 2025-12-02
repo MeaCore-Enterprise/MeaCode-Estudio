@@ -7,6 +7,7 @@ import { useEditor, type FileTab } from '@/contexts/editor-context';
 interface PreviewPanelProps {
     file: FileTab;
     onUpdate: () => void;
+    content?: string;
 }
 
 export function usePreview(file: FileTab | null) {
@@ -44,7 +45,7 @@ export function usePreview(file: FileTab | null) {
             padding: 1rem;
             background-color: white;
           }
-          .dark body {
+          body.dark {
              background-color: #020817; /* Tailwind dark bg */
              color: #fafafa;
           }
@@ -71,7 +72,7 @@ export function usePreview(file: FileTab | null) {
 }
 
 
-export function PreviewPanel({ file, onUpdate }: PreviewPanelProps) {
+export function PreviewPanel({ file, onUpdate, content }: PreviewPanelProps) {
   const { setPreviewError } = useEditor();
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -108,9 +109,14 @@ export function PreviewPanel({ file, onUpdate }: PreviewPanelProps) {
      }
   }
 
+  // Whenever provided content changes, render it.
   useEffect(() => {
-    if (file.language === 'html') {
-      const fullHTML = `
+    if (file.language !== 'html') return;
+    if (typeof content === 'string' && content.length > 0) {
+      updateIframeContent(content);
+      return;
+    }
+    const fullHTML = `
       <!DOCTYPE html>
       <html lang="es">
       <head>
@@ -127,7 +133,7 @@ export function PreviewPanel({ file, onUpdate }: PreviewPanelProps) {
             padding: 1rem;
             background-color: white;
           }
-          .dark body {
+          body.dark {
              background-color: #020817; /* Tailwind dark bg */
              color: #fafafa;
           }
@@ -138,9 +144,8 @@ export function PreviewPanel({ file, onUpdate }: PreviewPanelProps) {
       </body>
       </html>
     `;
-      updateIframeContent(fullHTML)
-    }
-  }, [file.content, file.language]);
+    updateIframeContent(fullHTML);
+  }, [content, file.content, file.language]);
 
 
   if (file.language !== 'html') {

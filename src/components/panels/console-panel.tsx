@@ -157,7 +157,7 @@ export function ConsolePanel({ className, file }: ConsolePanelProps) {
           <Button
             size="sm"
             onClick={executeJavaScript}
-            disabled={isRunning || (file.language !== 'javascript' && file.content.trim() === '')}
+            disabled={isRunning || file.language !== 'javascript' || file.content.trim() === ''}
             className="h-8 gap-1.5"
           >
             {isRunning ? (

@@ -23,7 +23,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { aiChatAssistant } from '@/ai/flows/ai-chat-assistant';
+import { aiChatAssistant } from '@/Desarrollo/ai/flows/ai-chat-assistant';
 import { useEditor } from '@/contexts/editor-context';
 import { Badge } from '@/components/ui/badge';
 import {

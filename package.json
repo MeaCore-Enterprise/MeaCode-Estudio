@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
-    "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
+    "genkit:dev": "genkit start -- tsx src/Desarrollo/ai/dev.ts",
+    "genkit:watch": "genkit start -- tsx --watch src/Desarrollo/ai/dev.ts",
     "build": "next build",
     "export": "next build && next export",
     "preview": "next build && next start",

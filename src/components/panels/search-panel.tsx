@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,6 +16,7 @@ export default function SearchPanel() {
   const [includeExts, setIncludeExts] = useState('ts,tsx,js,jsx,css,html,json,md');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runSearch = async () => {
     if (!workspaceRoot || !query.trim()) {
@@ -40,6 +41,23 @@ export default function SearchPanel() {
     }
   };
 
+  useEffect(() => {
+    if (!workspaceRoot) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      if (query.trim()) {
+        runSearch();
+      } else {
+        setResults([]);
+      }
+    }, 350);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, caseSensitive, isRegex, includeExts, workspaceRoot]);
+
   return (
     <div className="flex h-full flex-col gap-2 p-2">
       <div className="flex gap-2">
@@ -50,6 +68,9 @@ export default function SearchPanel() {
           className="flex-1"
           onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
         />
+        <Button size="sm" variant="ghost" onClick={() => { setQuery(''); setResults([]); }} disabled={!query && results.length === 0}>
+          Clear
+        </Button>
         <Button size="sm" onClick={runSearch} disabled={loading || !workspaceRoot}>
           {loading ? 'Searching...' : 'Search'}
         </Button>
@@ -66,6 +87,9 @@ export default function SearchPanel() {
         <div className="flex items-center gap-2 flex-1">
           <span>Exts:</span>
           <Input value={includeExts} onChange={(e) => setIncludeExts(e.target.value)} className="h-8" />
+        </div>
+        <div className="ml-auto text-muted-foreground">
+          {workspaceRoot && query.trim() && !loading ? `${results.length} results` : ''}
         </div>
       </div>
       {!workspaceRoot && (

@@ -3,7 +3,6 @@
 import * as React from 'react';
 import {
   FileCode,
-  MessageSquare,
   Settings,
   File as FileIcon,
   GitBranch,
@@ -63,10 +62,6 @@ export function CommandPalette({ open, setOpen, setActiveTab, setIsMeaCodeActive
           <CommandItem onSelect={() => runCommand(() => setActiveTab('editor'))}>
             <FileIcon className="mr-2 h-4 w-4" />
             <span>Editor</span>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => setActiveTab('chat'))}>
-            <MessageSquare className="mr-2 h-4 w-4" />
-            <span>AI Chat</span>
           </CommandItem>
           <CommandItem onSelect={() => runCommand(() => setActiveTab('files'))}>
             <FileCode className="mr-2 h-4 w-4" />

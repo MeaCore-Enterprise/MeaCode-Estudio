@@ -14,7 +14,8 @@
     "bundle": {
       "active": true,
       "identifier": "com.meacode.estudio",
-      "targets": ["msi", "nsis", "app", "dmg", "appimage", "deb", "rpm"]
+      "targets": ["msi", "nsis", "app", "dmg", "appimage", "deb", "rpm"],
+      "icon": ["../src/app/favicon.ico"]
     },
     "windows": [
       {

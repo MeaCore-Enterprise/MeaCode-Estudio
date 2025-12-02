@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::Serialize;
-use sysinfo::{System, SystemExt};
+use sysinfo::System;
 use serde_json::json;
 
 #[derive(Serialize)]
@@ -79,9 +79,10 @@ async fn ai_chat(query: String, context: String) -> Result<String, String> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct IntelliSenseOut {
-  completionSuggestions: Vec<String>,
-  errorDetection: String,
+  completion_suggestions: Vec<String>,
+  error_detection: String,
 }
 
 #[tauri::command]
@@ -103,7 +104,7 @@ async fn ai_intellisense(code_snippet: String, programming_language: String, con
   if let Some(ctx) = context {
     if ctx.len() > 0 { let _ = ctx.len(); }
   }
-  Ok(IntelliSenseOut { completionSuggestions: suggestions, errorDetection: error })
+  Ok(IntelliSenseOut { completion_suggestions: suggestions, error_detection: error })
 }
 
 fn main() {
