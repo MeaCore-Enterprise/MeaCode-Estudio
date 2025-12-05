@@ -107,10 +107,10 @@ export function IdeLayout() {
             <MeaCodeLogo className="size-6" />
           </button>
         </header>
-        <main className="flex-1 overflow-hidden">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PanelId)} className="h-full w-full flex flex-col">
-            <TabsContent value="editor" className={cn("h-full m-0 flex-1", activeTab !== 'editor' && "hidden")}>
-                <EditorPanel />
+        <main className="flex-1 overflow-hidden min-h-0">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PanelId)} className="h-full w-full flex flex-col min-h-0">
+            <TabsContent value="editor" className={cn("h-full m-0 flex-1 min-h-0 p-0", activeTab !== 'editor' && "hidden")}>
+                <EditorPanel onWorkspaceTabChange={() => setActiveTab('editor')} />
             </TabsContent>
             <div className={cn("flex-1 overflow-y-auto", activeTab === 'editor' && "hidden")}>
               <TabsContent value="files" className={cn("h-full m-0", activeTab !== 'files' && "hidden")}>
@@ -181,8 +181,8 @@ export function IdeLayout() {
           {renderSidebarContent()}
       </aside>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PanelId)} className="flex-1 flex">
-          <div className={cn('bg-muted/40 transition-all duration-300 ease-in-out', activeTab !== 'editor' ? 'w-[320px]' : 'w-0')}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PanelId)} className="flex-1 flex min-h-0">
+          <div className={cn('bg-muted/40 transition-all duration-300 ease-in-out overflow-hidden', activeTab !== 'editor' ? 'w-[320px]' : 'hidden')}>
             <div className="h-full w-full overflow-y-auto border-r">
                 <TabsContent value="files" className={cn(activeTab !== 'files' && 'h-0 overflow-hidden')}><FileExplorerPanel /></TabsContent>
                 <TabsContent value="search" className={cn(activeTab !== 'search' && 'h-0 overflow-hidden')}><SearchPanel /></TabsContent>
@@ -191,12 +191,12 @@ export function IdeLayout() {
             </div>
           </div>
 
-          <main className="flex-1 flex flex-col min-w-0">
-             <TabsContent value="editor" className={cn("flex-1 m-0", activeTab !== 'editor' && 'h-0 overflow-hidden')}>
-                <EditorPanel />
+          <main className="flex-1 flex flex-col min-w-0 min-h-0">
+             <TabsContent value="editor" className={cn("flex-1 m-0 min-h-0 p-0", activeTab !== 'editor' && 'h-0 overflow-hidden')}>
+                <EditorPanel onWorkspaceTabChange={() => setActiveTab('editor')} />
              </TabsContent>
-              {panels.filter(p => p.id !== 'editor').map(panel => (
-                <TabsContent key={panel.id} value={panel.id} className={cn("flex-1 m-0", activeTab !== panel.id && 'h-0 overflow-hidden')}>
+             {panels.filter(p => p.id !== 'editor').map(panel => (
+                <TabsContent key={panel.id} value={panel.id} className={cn("flex-1 m-0 min-h-0", activeTab !== panel.id && 'h-0 overflow-hidden')}>
                   {/* This is a bit of a hack to make sure content is mounted for sidebar view but not fully rendered */}
                 </TabsContent>
               ))}

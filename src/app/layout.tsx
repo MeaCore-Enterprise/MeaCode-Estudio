@@ -3,6 +3,8 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { ThemeProvider } from '@/components/theme-provider';
 import { EditorProvider } from '@/contexts/editor-context';
+import { AuthProvider } from '@/contexts/auth-context';
+import { SubscriptionProvider } from '@/contexts/subscription-context';
 
 export const metadata: Metadata = {
   title: 'MeaCode Estudio',
@@ -31,10 +33,14 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <EditorProvider>
-            {children}
-            <Toaster />
-          </EditorProvider>
+          <AuthProvider>
+            <SubscriptionProvider>
+              <EditorProvider>
+                {children}
+                <Toaster />
+              </EditorProvider>
+            </SubscriptionProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

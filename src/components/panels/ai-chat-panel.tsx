@@ -25,6 +25,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { aiChatAssistant } from '@/Desarrollo/ai/flows/ai-chat-assistant';
 import { useEditor } from '@/contexts/editor-context';
+import { useSubscription } from '@/contexts/subscription-context';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -69,7 +70,11 @@ export function AIChatPanel() {
     updateFileContent,
   } = useEditor();
 
+  const { getRemainingRequests, incrementRequestCount, canUseFeature, subscription } = useSubscription();
+
   const lang = activeFile?.language || 'javascript';
+  const remainingRequests = getRemainingRequests();
+  const canUseAI = remainingRequests > 0 || remainingRequests === Infinity;
 
   useEffect(() => {
     // A little delay to allow the new message to be rendered
@@ -98,6 +103,12 @@ export function AIChatPanel() {
   const sendMessage = async (customPrompt?: string) => {
     const messageContent = customPrompt || input;
     if (!messageContent.trim() || isLoading) return;
+
+    // Check subscription limits
+    if (!canUseAI) {
+      // Show upgrade dialog or message
+      return;
+    }
 
     const fullContext = getContextForAI();
 
@@ -131,6 +142,9 @@ export function AIChatPanel() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // Increment request count
+      incrementRequestCount();
     } catch (error) {
       console.error('Error al enviar mensaje:', error);
 
@@ -228,6 +242,11 @@ export function AIChatPanel() {
               {hasErrors && (
                 <Badge variant="destructive" className="text-xs animate-pulse">
                   {consoleLogs.filter(l => l.type === 'error').length} errors
+                </Badge>
+              )}
+              {subscription && (
+                <Badge variant="secondary" className="text-xs">
+                  {remainingRequests === Infinity ? '∞' : remainingRequests} requests
                 </Badge>
               )}
             </div>
@@ -407,6 +426,13 @@ export function AIChatPanel() {
               Fix errors ahora
             </Button>
           )}
+          {!canUseAI && (
+            <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md mb-2">
+              <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                You've reached your daily AI request limit. Upgrade to continue using MeaMind.
+              </p>
+            </div>
+          )}
           <div className="relative flex gap-2">
             <Textarea
               value={input}
@@ -417,9 +443,9 @@ export function AIChatPanel() {
                   sendMessage();
                 }
               }}
-              placeholder="Describe qué quieres hacer..."
+              placeholder={canUseAI ? "Describe qué quieres hacer..." : "Upgrade to continue..."}
               className="min-h-[60px] resize-none pr-12 text-sm"
-              disabled={isLoading}
+              disabled={isLoading || !canUseAI}
             />
             <Button
               onClick={() => sendMessage()}

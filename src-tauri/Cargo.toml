@@ -15,6 +15,7 @@ tauri = { version = "1.5", features = ["path-all", "dialog-open", "dialog-save",
 sysinfo = "0.30"
 num_cpus = "1.16"
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["full"] }
 
 [features]
 default = ["custom-protocol"]

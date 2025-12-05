@@ -10,13 +10,15 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Terminal, Loader2, Eye, FileCode, RefreshCw, ExternalLink } from 'lucide-react';
+import { Terminal, Loader2, Eye, FileCode, RefreshCw, ExternalLink, Workflow } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import type { editor } from 'monaco-editor';
 import { KeyboardBar } from '../editor/keyboard-bar';
 import { ConsolePanel } from './console-panel';
 import { PreviewPanel, usePreview } from './preview-panel';
+import { PreviewPanelEnhanced } from './preview-panel-enhanced';
+import { CodeCanvasPanel } from './code-canvas-panel';
 import { useEditor } from '@/contexts/editor-context';
 import { FileTabs } from '../editor/file-tabs';
 
@@ -29,7 +31,11 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
 
 function AiIntellisensePanel() { return null }
 
-export function EditorPanel() {
+interface EditorPanelProps {
+  onWorkspaceTabChange?: (tab: 'editor' | 'console' | 'preview') => void;
+}
+
+export function EditorPanel({ onWorkspaceTabChange }: EditorPanelProps) {
   const { 
     files,
     activeFileId,
@@ -44,6 +50,7 @@ export function EditorPanel() {
     openFolder
   } = useEditor();
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState('editor');
+  const [showCanvas, setShowCanvas] = useState(false);
   const { updatePreview, openInNewTab, isLoading: isPreviewLoading, previewContent } = usePreview(activeFile);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const changeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,6 +59,7 @@ export function EditorPanel() {
   const [isLowSpec, setIsLowSpec] = useState(false);
   const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
   const { getPendingCursor, clearPendingCursor } = useEditor();
+  const [selectionMode, setSelectionMode] = useState(false);
   
   const handleEditorDidMount = (editorInstance: editor.IStandaloneCodeEditor, monaco?: any) => {
     editorRef.current = editorInstance;
@@ -163,6 +171,15 @@ export function EditorPanel() {
     }
   }, [activeFile, getPendingCursor, clearPendingCursor]);
 
+  // When switching to the Preview tab, rebuild the iframe content once visible.
+  useEffect(() => {
+    if (activeWorkspaceTab === 'preview') {
+      // Slight delay to ensure the tab is visible before writing into the iframe
+      const t = setTimeout(() => { updatePreview(); }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [activeWorkspaceTab, updatePreview]);
+
   const handleNewFile = () => {
     const fileName = prompt('Nombre del archivo:', 'untitled.js');
     if (!fileName) return;
@@ -242,10 +259,18 @@ export function EditorPanel() {
   );
 
   return (
-    <Tabs value={activeWorkspaceTab} onValueChange={setActiveWorkspaceTab} className="flex flex-col h-full bg-muted/40">
+    <Tabs
+      value={activeWorkspaceTab}
+      onValueChange={(v) => {
+        setActiveWorkspaceTab(v);
+        onWorkspaceTabChange?.(v as 'editor' | 'canvas' | 'console' | 'preview');
+      }}
+      className="flex flex-col h-full min-h-0"
+    >
        <div className="flex items-center justify-between border-b bg-background p-2">
         <TabsList className="bg-muted">
           <TabsTrigger value="editor" className="gap-2" onClick={() => setActiveWorkspaceTab('editor')}><FileCode size={14}/> {isMobile ? '' : 'Editor'} </TabsTrigger>
+          <TabsTrigger value="canvas" className="gap-2" onClick={() => setActiveWorkspaceTab('canvas')}><Workflow size={14}/> {isMobile ? '' : 'Canvas'} </TabsTrigger>
           <TabsTrigger value="console" className="gap-2" onClick={() => setActiveWorkspaceTab('console')}><Terminal size={14}/> {isMobile ? '' : 'Console'} </TabsTrigger>
           <TabsTrigger value="preview" className="gap-2" onClick={() => setActiveWorkspaceTab('preview')}><Eye size={14}/> {isMobile ? '' : 'Preview'} </TabsTrigger>
         </TabsList>
@@ -271,6 +296,14 @@ export function EditorPanel() {
                 <ExternalLink className="h-3.5 w-3.5" />
                 Open
               </Button>
+              <Button
+                size="sm"
+                variant={selectionMode ? 'default' : 'ghost'}
+                onClick={() => setSelectionMode(v => !v)}
+                className="h-8"
+              >
+                {selectionMode ? 'Seleccionando…' : 'Seleccionar'}
+              </Button>
             </div>
           )}
           <div className="flex items-center gap-1">
@@ -282,46 +315,58 @@ export function EditorPanel() {
         </div>
       </div>
 
-      <div className="px-2 py-1 border-b bg-background text-xs text-muted-foreground">
-        {(() => {
-          const p = activeFile?.path || activeFile?.name || '';
-          const parts = p.split(/[\\/]+/).filter(Boolean);
-          return (
-            <div className="flex items-center gap-1 overflow-hidden">
-              {parts.map((seg, i) => (
-                <div key={i} className="flex items-center gap-1">
-                  <span className="truncate max-w-[160px]">{seg}</span>
-                  {i < parts.length - 1 && <span className="text-muted-foreground">›</span>}
-                </div>
-              ))}
-            </div>
-          );
-        })()}
-      </div>
+      {activeWorkspaceTab === 'editor' && (
+        <div className="px-2 py-1 border-b bg-background text-xs text-muted-foreground">
+          {(() => {
+            const p = activeFile?.path || activeFile?.name || '';
+            const parts = p.split(/[\\/]+/).filter(Boolean);
+            return (
+              <div className="flex items-center gap-1 overflow-hidden">
+                {parts.map((seg, i) => (
+                  <div key={i} className="flex items-center gap-1">
+                    <span className="truncate max-w-[160px]">{seg}</span>
+                    {i < parts.length - 1 && <span className="text-muted-foreground">›</span>}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
-       <FileTabs 
-          files={files}
-          activeFileId={activeFileId}
-          onFileSelect={setActiveFile}
-          onFileClose={closeFile}
-          onNewFile={handleNewFile}
-        />
-       
-        <TabsContent value="editor" className="flex-1 m-0 p-2 overflow-hidden flex flex-col">
-          {renderEditorContent()}
+       {activeWorkspaceTab === 'editor' && (
+         <TabsContent value="editor" className="flex-1 min-h-0 m-0 p-2 overflow-hidden flex flex-col">
+           <FileTabs 
+             files={files}
+             activeFileId={activeFileId}
+             onFileSelect={setActiveFile}
+             onFileClose={closeFile}
+             onNewFile={handleNewFile}
+           />
+           {renderEditorContent()}
            {isMobile && (
              <KeyboardBar
                language={activeFile.language === 'html' ? 'html' : activeFile.language === 'python' ? 'python' : 'javascript'}
                onInsert={handleInsertText}
              />
            )}
-        </TabsContent>
-        <TabsContent value="console" className="flex-1 m-0 overflow-hidden">
-            <ConsolePanel file={activeFile} />
-        </TabsContent>
-        <TabsContent value="preview" className="flex-1 m-0 overflow-hidden">
-          <PreviewPanel file={activeFile} onUpdate={updatePreview} content={previewContent} />
-        </TabsContent>
+         </TabsContent>
+       )}
+       {activeWorkspaceTab === 'canvas' && (
+         <TabsContent value="canvas" className="flex flex-1 min-h-0 m-0 p-0 overflow-hidden">
+           <CodeCanvasPanel />
+         </TabsContent>
+       )}
+       {activeWorkspaceTab === 'console' && (
+         <TabsContent value="console" className="flex flex-1 min-h-0 m-0 overflow-hidden">
+             <ConsolePanel file={activeFile} />
+         </TabsContent>
+       )}
+       {activeWorkspaceTab === 'preview' && (
+         <TabsContent value="preview" className="flex flex-1 min-h-0 m-0 p-0 overflow-hidden">
+           <PreviewPanelEnhanced file={activeFile} onUpdate={updatePreview} content={previewContent} selectionMode={selectionMode} />
+         </TabsContent>
+       )}
         {/* Gallery removed */}
 
       <div className="h-6 border-t bg-background text-xs text-muted-foreground px-2 flex items-center justify-between">

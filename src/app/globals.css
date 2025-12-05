@@ -57,3 +57,9 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Ensure inactive Radix TabsContent never occupies space even if a display class is applied */
+[role="tabpanel"][data-state="inactive"],
+[data-radix-tabs-content][data-state="inactive"] {
+  display: none !important;
+}

@@ -1,5 +1,5 @@
 // MeaMind IntelliSense
- 
+import { intellisenseCache } from '@/lib/intellisense-cache';
 
 /**
  * @fileOverview Provides AI-powered code completion and error detection.
@@ -23,15 +23,52 @@ export interface AIPoweredIntelliSenseOutput {
 export async function aiPoweredIntelliSense(
   input: AIPoweredIntelliSenseInput
 ): Promise<AIPoweredIntelliSenseOutput> {
+  // Check cache first
+  const cached = intellisenseCache.get(
+    input.codeSnippet,
+    input.programmingLanguage,
+    input.context
+  );
+
+  if (cached) {
+    return {
+      completionSuggestions: cached.suggestions,
+      errorDetection: cached.error,
+    };
+  }
+
   const isTauri = typeof window !== 'undefined' && (window as any).__TAURI__;
   if (!isTauri) {
-    return { completionSuggestions: [], errorDetection: '' };
+    // Fallback for web - basic suggestions
+    return { 
+      completionSuggestions: ['// Web mode: Limited suggestions'], 
+      errorDetection: '' 
+    };
   }
-  const invoke = (window as any).__TAURI__?.invoke;
-  const result = await invoke('ai_intellisense', {
-    codeSnippet: input.codeSnippet,
-    programmingLanguage: input.programmingLanguage,
-    context: input.context ?? null,
-  });
-  return result as AIPoweredIntelliSenseOutput;
+
+  try {
+    const invoke = (window as any).__TAURI__?.invoke;
+    const result = await invoke('ai_intellisense', {
+      codeSnippet: input.codeSnippet,
+      programmingLanguage: input.programmingLanguage,
+      context: input.context ?? null,
+    }) as AIPoweredIntelliSenseOutput;
+
+    // Cache the result
+    intellisenseCache.set(
+      input.codeSnippet,
+      input.programmingLanguage,
+      input.context,
+      result.completionSuggestions,
+      result.errorDetection
+    );
+
+    return result;
+  } catch (error) {
+    console.error('Error in AI IntelliSense:', error);
+    return { 
+      completionSuggestions: [], 
+      errorDetection: 'Error connecting to AI service' 
+    };
+  }
 }
