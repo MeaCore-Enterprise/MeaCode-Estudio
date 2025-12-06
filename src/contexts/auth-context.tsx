@@ -1,38 +1,8 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { 
-  getAuth, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-  sendPasswordResetEmail,
-  User as FirebaseUser,
-  GoogleAuthProvider,
-  signInWithPopup
-} from 'firebase/auth';
-import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-
-// Firebase config - debe ser configurado con variables de entorno
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '',
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '',
-};
-
-// Initialize Firebase
-let app: FirebaseApp;
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApps()[0];
-}
-
-const auth = getAuth(app);
+import { createClient } from '@/lib/supabase/client';
+import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 export interface User {
   uid: string;
@@ -55,51 +25,94 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function firebaseUserToUser(firebaseUser: FirebaseUser | null): User | null {
-  if (!firebaseUser) return null;
+function supabaseUserToUser(supabaseUser: SupabaseUser | null): User | null {
+  if (!supabaseUser) return null;
   return {
-    uid: firebaseUser.uid,
-    email: firebaseUser.email,
-    displayName: firebaseUser.displayName,
-    photoURL: firebaseUser.photoURL,
-    isAnonymous: firebaseUser.isAnonymous,
+    uid: supabaseUser.id,
+    email: supabaseUser.email || null,
+    displayName: supabaseUser.user_metadata?.full_name || 
+                 supabaseUser.user_metadata?.name || 
+                 supabaseUser.email?.split('@')[0] || 
+                 null,
+    photoURL: supabaseUser.user_metadata?.avatar_url || 
+              supabaseUser.user_metadata?.picture || 
+              null,
+    isAnonymous: false,
   };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const supabase = createClient();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUserToUser(firebaseUser));
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(supabaseUserToUser(session?.user ?? null));
       setLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(supabaseUserToUser(session?.user ?? null));
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
-  }, []);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) throw error;
+    if (!data.user) throw new Error('Failed to sign in');
+  }, [supabase]);
 
   const signUp = useCallback(async (email: string, password: string) => {
-    await createUserWithEmailAndPassword(auth, email, password);
-  }, []);
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) throw error;
+    if (!data.user) throw new Error('Failed to create account');
+  }, [supabase]);
 
   const signInWithGoogle = useCallback(async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
-  }, []);
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) throw error;
+  }, [supabase]);
 
   const signOut = useCallback(async () => {
-    await firebaseSignOut(auth);
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     setUser(null);
-  }, []);
+  }, [supabase]);
 
   const resetPassword = useCallback(async (email: string) => {
-    await sendPasswordResetEmail(auth, email);
-  }, []);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    });
+
+    if (error) throw error;
+  }, [supabase]);
 
   return (
     <AuthContext.Provider
@@ -126,4 +139,3 @@ export function useAuth() {
   }
   return context;
 }
-

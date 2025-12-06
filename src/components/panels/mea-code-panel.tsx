@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useEditor } from '@/contexts/editor-context';
-import { aiChatAssistant } from '@/Desarrollo/ai/flows/ai-chat-assistant';
+import { aiChatAssistant } from '@/ai/flows/ai-chat-assistant';
 import { cn } from '@/lib/utils';
 
 interface MeaCodePanelProps {
@@ -111,7 +111,7 @@ INSTRUCCIONES:
 2. Genera el código necesario
 3. Si es necesario crear archivos, indica claramente qué archivos crear
 4. Proporciona código completo y funcional
-5. Usa el formato ```suggestion:<language> para código aplicable`;
+5. Usa el formato \`\`\`suggestion:<language> para código aplicable`;
 
       addLog('info', 'Enviando solicitud a IA...');
       
@@ -154,7 +154,7 @@ INSTRUCCIONES:
           addLog('info', `Creando nuevo archivo: ${fileName}`);
           createFile(fileName, firstSuggestion.language as any);
           // Note: createFile doesn't return the file ID immediately, so we'll update after
-          setTimeout(() => {
+    setTimeout(() => {
             // This is a workaround - in production, createFile should return the ID
             addLog('success', `Archivo ${fileName} creado y código aplicado`);
           }, 100);
@@ -299,7 +299,7 @@ INSTRUCCIONES:
                     </Badge>
                   )}
                 </div>
-              </CardHeader>
+                </CardHeader>
               <CardContent className="flex-1 overflow-hidden">
                 <ScrollArea className="h-full font-mono text-xs" ref={scrollRef}>
                   <div className="space-y-2 p-2">
@@ -334,9 +334,9 @@ INSTRUCCIONES:
                       ))
                     )}
                   </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
           </TabsContent>
 
           <TabsContent value="preview" className="flex-1 overflow-auto m-0 p-4">
@@ -354,7 +354,7 @@ INSTRUCCIONES:
                 ) : (
                   <div className="h-[60vh] w-full bg-muted rounded-md flex items-center justify-center">
                     <p className="text-muted-foreground">La vista previa aparecerá aquí después de ejecutar MeaCode.</p>
-                  </div>
+                </div>
                 )}
               </CardContent>
             </Card>

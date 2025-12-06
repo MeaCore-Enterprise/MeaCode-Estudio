@@ -1,6 +1,6 @@
 const nextConfig = {
   /* config options here */
-  output: 'export',
+  // output: 'export', // Comentado para permitir rutas dinámicas de autenticación
   typescript: {
     ignoreBuildErrors: true,
   },

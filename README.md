@@ -34,15 +34,18 @@ npm install
 3. Configura las variables de entorno:
 Crea un archivo `.env.local` con:
 ```
-NEXT_PUBLIC_FIREBASE_API_KEY=your_key
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_domain
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_bucket
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# Stripe
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_key
+
+# Google API (para IA)
 GOOGLE_API_KEY=your_google_api_key
 ```
+
+Ver [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) para instrucciones detalladas de configuración.
 
 4. Ejecuta en modo desarrollo:
 ```bash

@@ -6,13 +6,14 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Code2, 
-  Function, 
+  FunctionSquare, 
   Component, 
   FileCode, 
   GitBranch, 
   Repeat,
   AlertCircle,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 interface Block {
@@ -27,7 +28,7 @@ const blocks: Block[] = [
   {
     id: 'function',
     name: 'Function',
-    icon: Function,
+    icon: FunctionSquare,
     category: 'Basic',
     description: 'JavaScript function',
   },
