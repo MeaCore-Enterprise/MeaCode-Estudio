@@ -1,0 +1,11 @@
+{
+    "name": "meacore-root",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "npm run dev --prefix frontend",
+        "build": "npm run build --prefix frontend",
+        "tauri:dev": "npm run tauri:dev --prefix frontend",
+        "tauri:build": "npm run tauri:build --prefix frontend"
+    }
+}
