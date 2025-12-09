@@ -5,5 +5,5 @@ members = [
     "kernel/kernel-lsp",
     "kernel/gpu-manager",
     "kernel/plugin-host",
-    "cli",
+    "cli", "frontend/src-tauri",
 ]
