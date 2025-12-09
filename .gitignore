@@ -1,0 +1,19 @@
+# Rust
+/target
+/debug
+/target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+.next/
+out/
+build/
+.DS_Store
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
