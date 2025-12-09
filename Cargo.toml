@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "kernel/kernel-core",
+    "kernel/kernel-lsp",
+    "kernel/gpu-manager",
+    "kernel/plugin-host",
+    "cli",
+]
