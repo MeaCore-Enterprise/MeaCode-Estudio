@@ -1,14 +1,20 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use wgpu::util::DeviceExt;
+
+pub struct GpuManager { 
+    device: wgpu::Device, 
+    queue: wgpu::Queue 
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl GpuManager {
+    pub async fn new() -> anyhow::Result<Self> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions::default()).await.ok_or(anyhow::anyhow!("no adapter"))?;
+        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default(), None).await?;
+        Ok(Self { device, queue })
+    }
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    pub async fn run_compute(&self, input: &[f32]) -> anyhow::Result<Vec<f32>> {
+        // Simple passthrough for now, would be a compute shader dispatch
+        Ok(input.to_vec())
     }
 }

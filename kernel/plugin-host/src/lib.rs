@@ -1,14 +1,21 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use wasmtime::{Engine, Module, Store};
+use anyhow::Result;
+
+pub struct PluginHost {
+    engine: Engine,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl PluginHost {
+    pub fn new() -> Self {
+        let engine = Engine::default();
+        Self { engine }
+    }
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    pub fn run_wasm_plugin(&self, wasm_bytes: &[u8]) -> Result<()> {
+        let module = Module::new(&self.engine, wasm_bytes)?;
+        let mut store = Store::new(&self.engine, ());
+        // In a real implementation: Link WASI, instantiate, call entry point
+        // let instance = Instance::new(&mut store, &module, &[])?;
+        Ok(())
     }
 }
