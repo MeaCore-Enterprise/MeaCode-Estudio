@@ -1726,6 +1726,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "kernel-core",
+ "kernel-lsp",
  "serde",
  "serde_json",
  "tauri",

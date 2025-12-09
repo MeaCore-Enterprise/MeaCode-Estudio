@@ -1,8 +1,8 @@
 import React from 'react'
-import { NewLayout } from './layout/NewLayout'
+import { IdeLayout } from './layout/IdeLayout'
 
 const App: React.FC = () => {
-  return <NewLayout />
+  return <IdeLayout />
 }
 
 export default App
