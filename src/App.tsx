@@ -1,8 +1,8 @@
 import React from 'react'
-import { Layout } from './layout/Layout'
+import { NewLayout } from './layout/NewLayout'
 
 const App: React.FC = () => {
-  return <Layout />
+  return <NewLayout />
 }
 
 export default App

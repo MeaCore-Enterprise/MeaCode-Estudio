@@ -2,6 +2,7 @@
 members = [
   "src-tauri",
   "kernel/kernel-core",
+  "kernel/kernel-lsp",
 ]
 
 resolver = "2"

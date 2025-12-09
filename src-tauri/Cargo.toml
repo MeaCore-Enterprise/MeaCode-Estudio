@@ -10,8 +10,10 @@ rust-version = "1.70"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri = { version = "1", features = ["shell-all", "path-all", "dialog-all"] }
+tauri = { version = "1", features = [] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+kernel-core = { path = "../kernel/kernel-core" }
+kernel-lsp = { path = "../kernel/kernel-lsp" }
 
 [build-dependencies]
 tauri-build = { version = "1", features = [] }

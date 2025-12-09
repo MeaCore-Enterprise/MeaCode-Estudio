@@ -1,0 +1,11 @@
+node_modules
+
+# Rust / Tauri build artifacts
+target/
+dist/
+
+# Generated Tauri icons
+src-tauri/icons/
+
+# Cache metadata files
+CACHEDIR.TAG
