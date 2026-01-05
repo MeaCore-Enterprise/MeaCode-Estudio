@@ -1,0 +1,562 @@
+================================================================================
+                    MEACODE STUDIO - ESTADO ACTUAL DEL EDITOR
+                    Documentación Completa - Versión 0.1.0
+================================================================================
+
+FECHA DE ACTUALIZACIÓN: 2026-01-05
+ÚLTIMA MODIFICACIÓN: Implementación completa de UI profesional, menús funcionales,
+                     layout responsivo, integración Nexusify API, y panel Run/Debug
+
+================================================================================
+1. ESTRUCTURA DEL PROYECTO
+================================================================================
+
+MeaCode-Estudio/
+├── kernel/                          # Backend en Rust
+│   ├── kernel-core/                 # Núcleo del IDE
+│   │   ├── src/
+│   │   │   ├── main.rs              # Punto de entrada
+│   │   │   ├── lib.rs               # Biblioteca principal
+│   │   │   ├── server.rs            # Servidor IPC
+│   │   │   ├── indexer.rs           # Indexación de archivos y símbolos
+│   │   │   └── license.rs           # Sistema de licencias y features
+│   │   └── Cargo.toml
+│   ├── kernel-lsp/                  # Servidor LSP personalizado
+│   │   ├── src/
+│   │   │   ├── main.rs
+│   │   │   ├── lib.rs
+│   │   │   └── handlers.rs         # Handlers LSP (diagnostics, completions, hover)
+│   │   └── Cargo.toml
+│   └── kernel-ai/                   # Motor de IA
+│       ├── src/
+│       │   └── lib.rs               # Providers de IA (OpenAI, Anthropic, Local, Nexusify)
+│       └── Cargo.toml
+│
+├── src/                              # Frontend en React + TypeScript
+│   ├── components/                   # Componentes reutilizables
+│   │   ├── TabBar.tsx               # Barra de pestañas del editor
+│   │   ├── QuickOpen.tsx            # Búsqueda rápida de archivos (Ctrl+P)
+│   │   └── ErrorBoundary.tsx        # Manejo de errores React
+│   ├── editor/                      # Editor de código
+│   │   ├── MainEditor.tsx           # Editor principal con Monaco
+│   │   └── Editor.tsx               # Componente base del editor
+│   ├── panels/                      # Paneles laterales e inferiores
+│   │   ├── ExplorerPanel.tsx        # Explorador de archivos (sidebar izquierdo)
+│   │   ├── AIChatThemed.tsx         # Panel de chat con IA (Nexusify API)
+│   │   ├── TerminalThemed.tsx       # Terminal integrada (xterm.js)
+│   │   └── RunDebugPanel.tsx        # Panel Run & Debug (sidebar izquierdo)
+│   ├── layout/                      # Layouts del IDE
+│   │   ├── IdeLayout.tsx            # Layout principal del IDE
+│   │   ├── Layout.legacy.tsx        # Layout legacy (deprecado)
+│   │   └── NewLayout.tsx            # Layout alternativo
+│   ├── hooks/                       # React Hooks personalizados
+│   │   └── useEditor.ts             # Hook para gestión de tabs y editor
+│   ├── ipc/                         # Comunicación con backend
+│   │   └── bridge.ts                # Bridge IPC (Tauri commands)
+│   ├── settings/                    # Configuración
+│   │   └── SettingsPanel.tsx       # Panel de configuración
+│   ├── utils/                       # Utilidades
+│   │   ├── fileUtils.ts             # Utilidades de archivos
+│   │   └── languageUtils.ts         # Detección de lenguajes
+│   ├── App.tsx                      # Componente raíz
+│   ├── main.tsx                     # Punto de entrada React
+│   └── index.css                    # Estilos globales
+│
+├── src-tauri/                       # Aplicación Tauri
+│   ├── src/
+│   │   └── main.rs                  # Backend Tauri (comandos IPC)
+│   ├── Cargo.toml
+│   ├── tauri.conf.json              # Configuración Tauri
+│   └── icons/                       # Iconos de la aplicación
+│
+├── package.json                     # Dependencias frontend
+├── Cargo.toml                       # Workspace Rust
+├── tsconfig.json                    # Configuración TypeScript
+├── vite.config.ts                   # Configuración Vite
+├── tailwind.config.cjs              # Configuración TailwindCSS
+├── Roadmap.md                       # Roadmap del proyecto
+└── OPTIMIZACIONES.md                # Documentación de optimizaciones
+
+================================================================================
+2. CARACTERÍSTICAS IMPLEMENTADAS
+================================================================================
+
+2.1. INTERFAZ DE USUARIO
+-------------------------
+✓ Header superior con menús desplegables completos
+  - File: New File, Open File, Open Folder, Save, Save As, Close, Exit
+  - Edit: Undo, Redo, Cut, Copy, Paste, Find, Replace
+  - Selection: Select All, Expand/Shrink Selection, Multi-cursor
+  - View: Toggle paneles (Explorer, Terminal, AI Chat), Quick Open, Settings
+  - Run: Start Debugging, Run Without Debugging, Stop, Breakpoints
+  - Help: Welcome, Documentation, Keyboard Shortcuts, About
+
+✓ Rail lateral izquierdo (Activity Bar)
+  - Botón Explorer (mutuamente exclusivo con Run/Debug)
+  - Botón Run and Debug (mutuamente exclusivo con Explorer)
+  - Iconos SVG profesionales (sin emojis)
+
+✓ Sidebar izquierdo (256px de ancho)
+  - Explorer Panel: Árbol de archivos navegable con iconos SVG
+  - Run/Debug Panel: Controles de ejecución y depuración
+  - Mutuamente exclusivos: solo uno visible a la vez
+
+✓ Editor central
+  - Monaco Editor integrado
+  - Sistema de tabs múltiples
+  - Syntax highlighting
+  - Breadcrumbs
+  - Indicador de archivos sin guardar
+  - Guardado con Ctrl+S
+  - Auto-guardado (preparado)
+
+✓ Sidebar derecho (320px de ancho fijo)
+  - AI Chat Panel: Integrado con Nexusify API
+    * Selector de modelos (GPT-4, GPT-4 Turbo, GPT-3.5, Claude, Gemini)
+    * Configuración de API Key
+    * Chat contextual para programación
+    * Estado de conexión
+  - Settings Panel: Panel de configuración
+
+✓ Panel inferior
+  - Terminal integrada (xterm.js)
+  - Altura fija: 200px
+  - ResizeObserver para ajuste automático
+  - Ejecución de comandos shell nativos
+
+✓ Quick Open (Ctrl+P)
+  - Búsqueda rápida de archivos
+  - Navegación con teclado
+  - Filtrado en tiempo real
+
+2.2. FUNCIONALIDADES DEL EDITOR
+--------------------------------
+✓ Apertura de archivos desde Explorer
+✓ Sistema de tabs múltiples
+✓ Guardado de archivos (Ctrl+S)
+✓ Detección de lenguajes por extensión
+✓ Breadcrumbs
+✓ Indicadores de archivos modificados
+✓ Cierre de tabs individuales
+
+2.3. INTEGRACIÓN CON BACKEND
+------------------------------
+✓ Comunicación IPC con Tauri
+✓ Comandos implementados:
+  - get_app_info: Información de la app
+  - ping_kernel: Estado del kernel
+  - list_dir: Listar directorios
+  - read_file: Leer archivos
+  - save_file: Guardar archivos
+  - execute_shell_command: Ejecutar comandos
+  - send_ai_chat_message: Chat con IA (preparado)
+  - open_workspace: Abrir workspace
+  - get_workspace_files: Obtener archivos del workspace
+  - get_workspace_symbols: Obtener símbolos
+
+2.4. SISTEMA DE IA
+------------------
+✓ Integración con Nexusify API
+✓ Múltiples modelos disponibles:
+  - GPT-4, GPT-4 Turbo, GPT-3.5 Turbo
+  - Claude 3 Opus, Claude 3 Sonnet
+  - Gemini Pro, Gemini Ultra
+✓ Configuración de API Key persistente
+✓ Chat contextual para programación
+✓ Manejo de errores y estados
+
+2.5. TERMINAL INTEGRADA
+-----------------------
+✓ xterm.js integrado
+✓ Ejecución de comandos shell
+✓ ResizeObserver para ajuste automático
+✓ Tema personalizado (dark)
+✓ Historial de comandos (preparado)
+
+2.6. LAYOUT RESPONSIVO
+----------------------
+✓ Paneles con ancho fijo donde corresponde
+✓ Editor flexible que se expande
+✓ Chat de IA: 320px fijo (no se comprime)
+✓ Terminal: Altura fija 200px
+✓ Ajuste automático cuando se ocultan/muestran paneles
+
+================================================================================
+3. COMPONENTES PRINCIPALES
+================================================================================
+
+3.1. IdeLayout.tsx (Layout Principal)
+--------------------------------------
+Estado:
+- showExplorer: boolean (default: true)
+- showAiChat: boolean (default: true)
+- showTerminal: boolean (default: true)
+- showRunDebug: boolean (default: false)
+- showQuickOpen: boolean (default: false)
+- showSettings: boolean (default: false)
+- showUserMenu: boolean (default: false)
+- activeMenu: string | null (menú activo del header)
+
+Funcionalidades:
+- Gestión de visibilidad de paneles
+- Menús desplegables del header
+- Toggles mutuamente exclusivos (Explorer ↔ Run/Debug)
+- Keyboard shortcuts (Ctrl+P para Quick Open)
+- Cierre de menús al hacer clic fuera
+
+3.2. MainEditor.tsx (Editor Principal)
+---------------------------------------
+Características:
+- Integración con Monaco Editor
+- Sistema de tabs múltiples
+- Guardado con Ctrl+S
+- Breadcrumbs
+- Indicadores de archivos modificados
+- Detección de lenguajes
+
+3.3. ExplorerPanel.tsx (Explorador)
+-----------------------------------
+Características:
+- Árbol de archivos navegable
+- Lazy loading de directorios
+- Iconos SVG para archivos y carpetas
+- Apertura de archivos al hacer clic
+- Navegación recursiva
+
+3.4. AIChatThemed.tsx (Chat de IA)
+-----------------------------------
+Características:
+- Integración con Nexusify API
+- Selector de modelos
+- Configuración de API Key
+- Historial de mensajes
+- Estados de carga
+- Manejo de errores
+
+3.5. TerminalThemed.tsx (Terminal)
+-----------------------------------
+Características:
+- xterm.js integrado
+- ResizeObserver para ajuste automático
+- Ejecución de comandos shell
+- Tema personalizado
+- Manejo de entrada/salida
+
+3.6. RunDebugPanel.tsx (Run & Debug)
+-------------------------------------
+Características:
+- Botones Run, Debug, Stop
+- Indicador de estado
+- Breakpoints (preparado)
+- Salida de ejecución
+
+3.7. QuickOpen.tsx (Búsqueda Rápida)
+------------------------------------
+Características:
+- Búsqueda de archivos (Ctrl+P)
+- Filtrado en tiempo real
+- Navegación con teclado
+- Apertura de archivos
+
+3.8. SettingsPanel.tsx (Configuración)
+--------------------------------------
+Características:
+- Panel de configuración
+- Cierre con botón
+- Preparado para opciones
+
+================================================================================
+4. MODIFICACIONES RECIENTES
+================================================================================
+
+4.1. ELIMINACIÓN DE EMOJIS
+---------------------------
+Fecha: 2026-01-05
+Cambios:
+- Reemplazados todos los emojis por iconos SVG (Heroicons)
+- Barra superior: iconos SVG para todos los botones
+- Rail lateral: iconos SVG para Explorer y Run/Debug
+- Explorer: iconos SVG para archivos y carpetas
+- Menús: iconos SVG en todas las opciones
+- Chat de IA: iconos SVG en header y botones
+- Run/Debug: iconos SVG en botones
+
+4.2. LAYOUT RESPONSIVO MEJORADO
+--------------------------------
+Fecha: 2026-01-05
+Cambios:
+- Chat de IA: Ancho fijo 320px (no se comprime)
+- Terminal: Altura fija 200px
+- Editor: Flexible, se expande cuando se ocultan paneles
+- Paneles laterales: flex-shrink-0 para mantener tamaño
+- Ajuste automático con ResizeObserver en Terminal
+
+4.3. MENÚS DESPLEGABLES COMPLETOS
+----------------------------------
+Fecha: 2026-01-05
+Cambios:
+- File: Menú completo con todas las opciones
+- Edit: Menú completo con opciones de edición
+- Selection: Menú completo con opciones de selección
+- View: Menú completo con toggles de paneles
+- Run: Menú completo con opciones de ejecución
+- Help: Menú completo con opciones de ayuda
+- Todos con iconos SVG y atajos de teclado
+
+4.4. PANEL RUN/DEBUG MOVIDO
+----------------------------
+Fecha: 2026-01-05
+Cambios:
+- Movido del panel inferior al sidebar izquierdo
+- Mutuamente exclusivo con Explorer
+- Mismo ancho que Explorer (256px)
+- Removido del bottom panel
+
+4.5. INTEGRACIÓN NEXUSIFY API
+------------------------------
+Fecha: 2026-01-05
+Cambios:
+- Integración completa con Nexusify API
+- Múltiples modelos disponibles
+- Configuración de API Key persistente
+- Chat contextual para programación
+- Manejo de errores y estados
+
+4.6. ELIMINACIÓN DE BOTONES DUPLICADOS
+---------------------------------------
+Fecha: 2026-01-05
+Cambios:
+- Removidos botones de toggle del header (Explorer, AI Chat, Terminal)
+- Estos controles ya están en el rail lateral izquierdo
+- Header más limpio y profesional
+
+================================================================================
+5. TECNOLOGÍAS UTILIZADAS
+================================================================================
+
+Frontend:
+- React 18.2.0
+- TypeScript 5.6.0
+- Tauri 1.5.0
+- Monaco Editor 0.52.0
+- xterm.js 6.0.0
+- TailwindCSS 3.4.15
+- Vite 5.4.0
+
+Backend:
+- Rust 1.70+
+- Tokio (async runtime)
+- tower-lsp (LSP server)
+- serde/serde_json (serialización)
+
+APIs Externas:
+- Nexusify API (IA)
+
+================================================================================
+6. ESTRUCTURA DE ARCHIVOS DETALLADA
+================================================================================
+
+src/
+├── components/
+│   ├── TabBar.tsx              # Barra de pestañas (tabs múltiples)
+│   ├── QuickOpen.tsx           # Búsqueda rápida Ctrl+P
+│   └── ErrorBoundary.tsx       # Manejo de errores React
+│
+├── editor/
+│   ├── MainEditor.tsx          # Editor principal con Monaco
+│   └── Editor.tsx              # Componente base (legacy)
+│
+├── panels/
+│   ├── ExplorerPanel.tsx       # Explorador de archivos (sidebar izquierdo)
+│   ├── AIChatThemed.tsx        # Chat con IA (Nexusify) (sidebar derecho)
+│   ├── TerminalThemed.tsx      # Terminal integrada (panel inferior)
+│   ├── RunDebugPanel.tsx       # Run & Debug (sidebar izquierdo)
+│   ├── AIChat.tsx              # Legacy
+│   └── Terminal.tsx             # Legacy
+│
+├── layout/
+│   ├── IdeLayout.tsx           # Layout principal (ACTIVO)
+│   ├── Layout.legacy.tsx        # Legacy (deprecado)
+│   └── NewLayout.tsx           # Alternativo (no usado)
+│
+├── hooks/
+│   └── useEditor.ts            # Hook para gestión de tabs y editor
+│
+├── ipc/
+│   └── bridge.ts               # Bridge IPC con Tauri
+│
+├── settings/
+│   └── SettingsPanel.tsx       # Panel de configuración
+│
+├── utils/
+│   ├── fileUtils.ts            # Utilidades de archivos
+│   └── languageUtils.ts       # Detección de lenguajes
+│
+├── App.tsx                     # Componente raíz
+├── main.tsx                    # Punto de entrada React
+└── index.css                   # Estilos globales
+
+kernel/
+├── kernel-core/
+│   ├── src/
+│   │   ├── main.rs             # Punto de entrada del kernel
+│   │   ├── lib.rs              # Biblioteca principal
+│   │   ├── server.rs           # Servidor IPC
+│   │   ├── indexer.rs          # Indexación de archivos y símbolos
+│   │   └── license.rs          # Sistema de licencias
+│   └── Cargo.toml
+│
+├── kernel-lsp/
+│   ├── src/
+│   │   ├── main.rs             # Servidor LSP
+│   │   ├── lib.rs              # Biblioteca LSP
+│   │   └── handlers.rs         # Handlers LSP (diagnostics, completions, hover)
+│   └── Cargo.toml
+│
+└── kernel-ai/
+    ├── src/
+    │   └── lib.rs              # Providers de IA (OpenAI, Anthropic, Local, Nexusify)
+    └── Cargo.toml
+
+src-tauri/
+├── src/
+│   └── main.rs                 # Backend Tauri (comandos IPC)
+├── Cargo.toml
+├── tauri.conf.json             # Configuración Tauri
+└── icons/                      # Iconos de la aplicación
+
+================================================================================
+7. ESTADO ACTUAL DE CARACTERÍSTICAS
+================================================================================
+
+✓ IMPLEMENTADO:
+---------------
+- UI completa y profesional (sin emojis, iconos SVG)
+- Layout responsivo
+- Menús desplegables completos
+- Sistema de tabs múltiples
+- Explorador de archivos navegable
+- Terminal integrada funcional
+- Chat de IA con Nexusify API
+- Panel Run/Debug
+- Quick Open (Ctrl+P)
+- Guardado de archivos (Ctrl+S)
+- Breadcrumbs
+- Indicadores de archivos modificados
+- Detección de lenguajes
+- Comunicación IPC con backend
+- Indexación básica de archivos
+
+⚠ EN PROGRESO / PREPARADO:
+---------------------------
+- Auto-guardado
+- Historial de comandos en terminal
+- Breakpoints en Run/Debug
+- LSP completo (diagnostics básicos implementados)
+- Autocompletado IA
+- Refactoring automático
+
+❌ PENDIENTE:
+-------------
+- Sistema de plugins (WASM + Deno)
+- GPU Manager
+- IA local con GPU
+- Debugger completo (DAP)
+- Build tasks
+- Snippets
+- Multi-cursor avanzado
+- Search & Replace avanzado
+- Minimapa
+- Folding avanzado
+
+================================================================================
+8. OPTIMIZACIONES APLICADAS
+================================================================================
+
+Ver archivo: OPTIMIZACIONES.md
+
+Resumen:
+- Optimizaciones de compilación Rust (.cargo/config.toml)
+- Optimizaciones de build (dev y release)
+- Caching mejorado
+- Compilación incremental optimizada
+
+================================================================================
+9. COMANDOS IPC IMPLEMENTADOS
+================================================================================
+
+Backend (src-tauri/src/main.rs):
+- get_app_info: Obtener información de la app
+- ping_kernel: Verificar estado del kernel
+- list_dir: Listar directorios
+- read_file: Leer archivos
+- save_file: Guardar archivos
+- execute_shell_command: Ejecutar comandos shell
+- spawn_shell: Crear shell (preparado)
+- write_to_shell: Escribir a shell (preparado)
+- resize_shell: Redimensionar shell (preparado)
+- kill_shell: Matar shell (preparado)
+- send_ai_chat_message: Enviar mensaje a IA (preparado)
+- open_workspace: Abrir workspace (preparado)
+- get_workspace_files: Obtener archivos del workspace (preparado)
+- get_workspace_symbols: Obtener símbolos del workspace (preparado)
+
+Frontend (src/ipc/bridge.ts):
+- Funciones wrapper para todos los comandos IPC
+- chatWithNexusify: Función para chat con Nexusify API
+
+================================================================================
+10. CONFIGURACIÓN ACTUAL
+================================================================================
+
+package.json:
+- React 18.2.0
+- TypeScript 5.6.0
+- Tauri 1.5.0
+- Monaco Editor 0.52.0
+- xterm.js 6.0.0
+- TailwindCSS 3.4.15
+- Vite 5.4.0
+
+Cargo.toml (workspace):
+- kernel-core
+- kernel-lsp
+- kernel-ai
+
+tauri.conf.json:
+- Configuración de ventana
+- Configuración de build
+- Permisos
+
+================================================================================
+11. NOTAS IMPORTANTES
+================================================================================
+
+- El editor usa iconos SVG en lugar de emojis para un aspecto más profesional
+- El layout es completamente responsivo y se adapta cuando se ocultan/muestran paneles
+- Explorer y Run/Debug son mutuamente exclusivos (solo uno visible a la vez)
+- El chat de IA mantiene un ancho fijo de 320px y no se comprime
+- La terminal tiene altura fija de 200px y se ajusta automáticamente con ResizeObserver
+- Todos los menús tienen funcionalidad básica conectada
+- La integración con Nexusify API está completa y funcional
+- El sistema de tabs permite múltiples archivos abiertos simultáneamente
+
+================================================================================
+12. PRÓXIMOS PASOS SUGERIDOS
+================================================================================
+
+1. Implementar auto-guardado
+2. Completar funcionalidad de Run/Debug (breakpoints, stepping)
+3. Mejorar LSP (más diagnósticos, autocompletado)
+4. Implementar search & replace avanzado
+5. Agregar snippets
+6. Implementar multi-cursor avanzado
+7. Agregar minimapa
+8. Implementar sistema de plugins
+9. Agregar GPU Manager
+10. Implementar IA local con GPU
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
+
