@@ -103,3 +103,115 @@ export async function getLspHover(symbol: string): Promise<LspHoverResult | null
     return null
   }
 }
+
+export async function saveFile(path: string, content: string): Promise<boolean> {
+  try {
+    return await callKernel<boolean>('save_file', { path, content })
+  } catch (err) {
+    console.error('Error calling save_file', err)
+    return false
+  }
+}
+
+export type TerminalOutput = {
+  stdout: string
+  stderr: string
+  exit_code: number
+}
+
+export async function getCurrentDirectory(): Promise<string> {
+  try {
+    return await callKernel<string>('get_current_directory')
+  } catch (err) {
+    console.error('Error calling get_current_directory', err)
+    return '.'
+  }
+}
+
+export async function executeShellCommand(command: string): Promise<TerminalOutput> {
+  try {
+    return await callKernel<TerminalOutput>('execute_shell_command', { command })
+  } catch (err) {
+    console.error('Error calling execute_shell_command', err)
+    return { stdout: '', stderr: String(err), exit_code: 1 }
+  }
+}
+
+export type WorkspaceInfo = {
+  path: string
+  project_type: string
+  name: string
+}
+
+export async function detectProjectType(path: string): Promise<string> {
+  try {
+    return await callKernel<string>('detect_project_type', { path })
+  } catch (err) {
+    console.error('Error calling detect_project_type', err)
+    return 'unknown'
+  }
+}
+
+export async function getWorkspaceInfo(path: string): Promise<WorkspaceInfo | null> {
+  try {
+    return await callKernel<WorkspaceInfo>('get_workspace_info', { path })
+  } catch (err) {
+    console.error('Error calling get_workspace_info', err)
+    return null
+  }
+}
+
+// Nexusify API integration
+export type NexusifyMessage = {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+
+export type NexusifyChatRequest = {
+  model: string
+  messages: NexusifyMessage[]
+  stream?: boolean
+  temperature?: number
+}
+
+export type NexusifyChatResponse = {
+  choices: Array<{
+    message: {
+      role: string
+      content: string
+    }
+  }>
+}
+
+export async function chatWithNexusify(
+  apiKey: string,
+  model: string,
+  messages: NexusifyMessage[],
+  temperature: number = 0.7,
+): Promise<string> {
+  try {
+    const response = await fetch('https://api.nexusify.co/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(error.error?.message || `HTTP ${response.status}`)
+    }
+
+    const data: NexusifyChatResponse = await response.json()
+    return data.choices[0]?.message?.content || 'No response'
+  } catch (err) {
+    console.error('Error calling Nexusify API:', err)
+    throw err
+  }
+}

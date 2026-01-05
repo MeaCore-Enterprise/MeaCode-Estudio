@@ -3,6 +3,21 @@ members = [
   "src-tauri",
   "kernel/kernel-core",
   "kernel/kernel-lsp",
+  "kernel/kernel-ai",
 ]
 
 resolver = "2"
+
+[profile.dev]
+opt-level = 1  # Optimización ligera para desarrollo más rápido
+incremental = true
+debug = true
+
+[profile.dev.package."*"]
+opt-level = 3  # Optimización completa para dependencias
+
+[profile.release]
+opt-level = 3
+lto = true  # Link-time optimization
+codegen-units = 1  # Mejor optimización
+panic = 'abort'  # Binarios más pequeños

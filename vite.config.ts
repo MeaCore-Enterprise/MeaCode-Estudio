@@ -9,6 +9,11 @@ export default defineConfig(() => ({
     strictPort: true,
   },
   envPrefix: ['VITE_', 'TAURI_'],
+  // Optimizaciones para desarrollo más rápido
+  optimizeDeps: {
+    include: ['react', 'react-dom', '@monaco-editor/react', '@xterm/xterm'],
+    exclude: ['@tauri-apps/api'],
+  },
   build: {
     target:
       process.env.TAURI_PLATFORM === 'windows'
@@ -18,5 +23,16 @@ export default defineConfig(() => ({
         : 'firefox102',
     minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_DEBUG,
+    // Optimizaciones de build
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'monaco-vendor': ['@monaco-editor/react', 'monaco-editor'],
+          'xterm-vendor': ['@xterm/xterm', '@xterm/addon-fit'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
   },
 }))

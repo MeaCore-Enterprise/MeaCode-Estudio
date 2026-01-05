@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::fs;
+use std::process::{Command, Stdio};
 
 use kernel_core::{KernelCore, KernelRequest, KernelResponse};
 use kernel_lsp::{engine_completions, engine_diagnostics, engine_hover};
@@ -112,11 +113,135 @@ async fn list_dir(path: Option<String>) -> Result<Vec<FileEntry>, String> {
     Ok(entries)
 }
 
+#[derive(Serialize)]
+struct WorkspaceInfo {
+    path: String,
+    project_type: String,
+    name: String,
+}
+
+#[tauri::command]
+async fn detect_project_type(path: String) -> Result<String, String> {
+    // Check for common project files
+    let cargo_toml = format!("{}/Cargo.toml", path);
+    if fs::metadata(&cargo_toml).is_ok() {
+        return Ok("rust".to_string());
+    }
+
+    let package_json = format!("{}/package.json", path);
+    if fs::metadata(&package_json).is_ok() {
+        return Ok("node".to_string());
+    }
+
+    let pyproject_toml = format!("{}/pyproject.toml", path);
+    if fs::metadata(&pyproject_toml).is_ok() {
+        return Ok("python".to_string());
+    }
+
+    let requirements_txt = format!("{}/requirements.txt", path);
+    if fs::metadata(&requirements_txt).is_ok() {
+        return Ok("python".to_string());
+    }
+
+    let pom_xml = format!("{}/pom.xml", path);
+    if fs::metadata(&pom_xml).is_ok() {
+        return Ok("java".to_string());
+    }
+
+    let go_mod = format!("{}/go.mod", path);
+    if fs::metadata(&go_mod).is_ok() {
+        return Ok("go".to_string());
+    }
+
+    Ok("unknown".to_string())
+}
+
+#[tauri::command]
+async fn get_workspace_info(path: String) -> Result<WorkspaceInfo, String> {
+    let project_type = detect_project_type(path.clone()).await.unwrap_or_else(|_| "unknown".to_string());
+    let name = path
+        .split(std::path::MAIN_SEPARATOR)
+        .last()
+        .unwrap_or("Workspace")
+        .to_string();
+
+    Ok(WorkspaceInfo {
+        path: path.clone(),
+        project_type,
+        name,
+    })
+}
+
 #[tauri::command]
 async fn read_file(path: String) -> Result<FileContent, String> {
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
 
     Ok(FileContent { path, content })
+}
+
+#[tauri::command]
+async fn save_file(path: String, content: String) -> Result<bool, String> {
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+async fn execute_command(command: String, args: Vec<String>) -> Result<String, String> {
+    let output = Command::new(&command)
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[derive(Serialize)]
+struct TerminalOutput {
+    stdout: String,
+    stderr: String,
+    exit_code: i32,
+}
+
+#[tauri::command]
+async fn get_current_directory() -> Result<String, String> {
+    std::env::current_dir()
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .to_string()
+        .into()
+}
+
+#[tauri::command]
+async fn execute_shell_command(command: String) -> Result<TerminalOutput, String> {
+    #[cfg(target_os = "windows")]
+    let shell = "cmd";
+    #[cfg(target_os = "windows")]
+    let shell_arg = "/c";
+    
+    #[cfg(not(target_os = "windows"))]
+    let shell = "sh";
+    #[cfg(not(target_os = "windows"))]
+    let shell_arg = "-c";
+
+    let output = Command::new(shell)
+        .arg(shell_arg)
+        .arg(&command)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    Ok(TerminalOutput {
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        exit_code: output.status.code().unwrap_or(0),
+    })
 }
 
 #[tauri::command]
@@ -167,6 +292,12 @@ fn main() {
             ping_kernel,
             list_dir,
             read_file,
+            save_file,
+            execute_command,
+            execute_shell_command,
+            get_current_directory,
+            detect_project_type,
+            get_workspace_info,
             lsp_completion,
             lsp_hover,
             lsp_diagnostics
