@@ -4,6 +4,7 @@ import { ExplorerPanel } from '../panels/ExplorerPanel'
 import { TerminalThemed } from '../panels/TerminalThemed'
 import { AIChatThemed } from '../panels/AIChatThemed'
 import { QuickOpen, type QuickOpenItem } from '../components/QuickOpen'
+import { CommandPalette, type Command } from '../components/CommandPalette'
 import { SettingsPanel } from '../settings/SettingsPanel'
 import { RunDebugPanel } from '../panels/RunDebugPanel'
 import { getAppInfo, pingKernel, readFile, listDir } from '../ipc/bridge'
@@ -20,6 +21,7 @@ export const IdeLayout: React.FC = () => {
   const [showTerminal, setShowTerminal] = useState(true)
   const [showRunDebug, setShowRunDebug] = useState(false)
   const [showQuickOpen, setShowQuickOpen] = useState(false)
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
@@ -35,6 +37,37 @@ export const IdeLayout: React.FC = () => {
     markTabSaved,
   } = useEditor()
   
+  // Load session state from localStorage
+  useEffect(() => {
+    try {
+      const savedState = localStorage.getItem('meacode-session')
+      if (savedState) {
+        const state = JSON.parse(savedState)
+        setShowExplorer(state.showExplorer ?? true)
+        setShowAiChat(state.showAiChat ?? true)
+        setShowTerminal(state.showTerminal ?? true)
+        setShowRunDebug(state.showRunDebug ?? false)
+      }
+    } catch (err) {
+      console.error('Error loading session:', err)
+    }
+  }, [])
+
+  // Save session state to localStorage
+  useEffect(() => {
+    const sessionState = {
+      showExplorer,
+      showAiChat,
+      showTerminal,
+      showRunDebug,
+    }
+    try {
+      localStorage.setItem('meacode-session', JSON.stringify(sessionState))
+    } catch (err) {
+      console.error('Error saving session:', err)
+    }
+  }, [showExplorer, showAiChat, showTerminal, showRunDebug])
+
   // Load files for Quick Open
   useEffect(() => {
     const loadFiles = async () => {
@@ -54,12 +87,21 @@ export const IdeLayout: React.FC = () => {
     loadFiles()
   }, [])
   
-  // Keyboard shortcut: Ctrl+P for Quick Open
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+      // Ctrl+P for Quick Open
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p' && !e.shiftKey) {
         e.preventDefault()
         setShowQuickOpen(true)
+        return
+      }
+      
+      // Ctrl+Shift+P for Command Palette
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
+        e.preventDefault()
+        setShowCommandPalette(true)
+        return
       }
     }
     
@@ -180,6 +222,106 @@ export const IdeLayout: React.FC = () => {
   const toggleAiChat = () => setShowAiChat((prev) => !prev)
   const toggleTerminal = () => setShowTerminal((prev) => !prev)
 
+  // Command Palette commands
+  const commands: Command[] = [
+    {
+      id: 'file.new',
+      label: 'New File',
+      category: 'File',
+      action: () => {
+        // TODO: Implement new file
+        console.log('New File')
+      },
+      shortcut: 'Ctrl+N',
+    },
+    {
+      id: 'file.open',
+      label: 'Open File...',
+      category: 'File',
+      action: () => {
+        setShowQuickOpen(true)
+      },
+      shortcut: 'Ctrl+O',
+    },
+    {
+      id: 'file.save',
+      label: 'Save',
+      category: 'File',
+      action: () => {
+        if (activeTabId) {
+          const tab = tabs.find(t => t.id === activeTabId)
+          if (tab && tab.modified) {
+            // TODO: Trigger save
+            console.log('Save', tab.path)
+          }
+        }
+      },
+      shortcut: 'Ctrl+S',
+    },
+    {
+      id: 'view.explorer',
+      label: 'Toggle Explorer',
+      category: 'View',
+      action: () => {
+        toggleExplorer()
+      },
+    },
+    {
+      id: 'view.terminal',
+      label: 'Toggle Terminal',
+      category: 'View',
+      action: () => {
+        toggleTerminal()
+      },
+    },
+    {
+      id: 'view.aichat',
+      label: 'Toggle AI Chat',
+      category: 'View',
+      action: () => {
+        toggleAiChat()
+      },
+    },
+    {
+      id: 'view.quickopen',
+      label: 'Quick Open...',
+      category: 'View',
+      action: () => {
+        setShowQuickOpen(true)
+      },
+      shortcut: 'Ctrl+P',
+    },
+    {
+      id: 'view.settings',
+      label: 'Open Settings',
+      category: 'View',
+      action: () => {
+        setShowSettings(true)
+      },
+      shortcut: 'Ctrl+,',
+    },
+    {
+      id: 'run.debug',
+      label: 'Start Debugging',
+      category: 'Run',
+      action: () => {
+        // TODO: Implement debug
+        console.log('Start Debugging')
+      },
+      shortcut: 'F5',
+    },
+    {
+      id: 'run.run',
+      label: 'Run Without Debugging',
+      category: 'Run',
+      action: () => {
+        // TODO: Implement run
+        console.log('Run')
+      },
+      shortcut: 'Ctrl+F5',
+    },
+  ]
+
   return (
     <div className="h-screen w-screen flex flex-col bg-black text-neutral-200">
       <QuickOpen
@@ -187,6 +329,11 @@ export const IdeLayout: React.FC = () => {
         onSelect={handleQuickOpenSelect}
         onClose={() => setShowQuickOpen(false)}
         visible={showQuickOpen}
+      />
+      <CommandPalette
+        visible={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        commands={commands}
       />
       {/* Top bar */}
       <header className="h-10 flex items-center justify-between px-3 md:px-5 border-b border-neutral-800 bg-neutral-950/95 backdrop-blur">

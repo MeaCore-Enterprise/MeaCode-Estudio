@@ -96,6 +96,48 @@ export function useEditor() {
     return state.tabs.find((tab) => tab.id === state.activeTabId) || null
   }, [state.tabs, state.activeTabId])
 
+  // Load tabs from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedTabs = localStorage.getItem('meacode-editor-tabs')
+      if (savedTabs) {
+        const parsed = JSON.parse(savedTabs)
+        if (parsed.tabs && parsed.tabs.length > 0) {
+          // Only restore paths, content will be loaded on demand
+          setState({
+            tabs: parsed.tabs.map((tab: any) => ({
+              ...tab,
+              content: '', // Will be loaded when tab is activated
+            })),
+            activeTabId: parsed.activeTabId,
+          })
+        }
+      }
+    } catch (err) {
+      console.error('Error loading editor state:', err)
+    }
+  }, [])
+
+  // Save tabs to localStorage
+  useEffect(() => {
+    try {
+      const toSave = {
+        tabs: state.tabs.map(tab => ({
+          id: tab.id,
+          path: tab.path,
+          name: tab.name,
+          language: tab.language,
+          modified: tab.modified,
+          // Don't save content to avoid localStorage size limits
+        })),
+        activeTabId: state.activeTabId,
+      }
+      localStorage.setItem('meacode-editor-tabs', JSON.stringify(toSave))
+    } catch (err) {
+      console.error('Error saving editor state:', err)
+    }
+  }, [state.tabs, state.activeTabId])
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

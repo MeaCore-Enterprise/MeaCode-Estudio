@@ -215,3 +215,62 @@ export async function chatWithNexusify(
     throw err
   }
 }
+
+// AI Code Actions
+export async function explainCodeWithAI(
+  apiKey: string,
+  code: string,
+  language?: string,
+): Promise<string> {
+  const messages: NexusifyMessage[] = [
+    {
+      role: 'system',
+      content: 'Eres un experto en programación. Explica código de forma clara y concisa.',
+    },
+    {
+      role: 'user',
+      content: `Explica este código${language ? ` en ${language}` : ''}:\n\n\`\`\`${language || ''}\n${code}\n\`\`\``,
+    },
+  ]
+
+  return await chatWithNexusify(apiKey, 'gpt-4', messages)
+}
+
+export async function fixErrorWithAI(
+  apiKey: string,
+  code: string,
+  error: string,
+  language?: string,
+): Promise<string> {
+  const messages: NexusifyMessage[] = [
+    {
+      role: 'system',
+      content: 'Eres un experto en programación. Arregla errores en código de forma precisa. Devuelve solo el código corregido, sin explicaciones adicionales.',
+    },
+    {
+      role: 'user',
+      content: `Arregla este error en el código:\n\nError: ${error}\n\nCódigo:\n\`\`\`${language || ''}\n${code}\n\`\`\`\n\nDevuelve solo el código corregido.`,
+    },
+  ]
+
+  return await chatWithNexusify(apiKey, 'gpt-4', messages)
+}
+
+export async function refactorCodeWithAI(
+  apiKey: string,
+  code: string,
+  language?: string,
+): Promise<string> {
+  const messages: NexusifyMessage[] = [
+    {
+      role: 'system',
+      content: 'Eres un experto en programación. Refactoriza código para mejorarlo manteniendo la funcionalidad. Devuelve solo el código refactorizado, sin explicaciones adicionales.',
+    },
+    {
+      role: 'user',
+      content: `Refactoriza este código${language ? ` en ${language}` : ''} para mejorarlo:\n\n\`\`\`${language || ''}\n${code}\n\`\`\`\n\nDevuelve solo el código refactorizado.`,
+    },
+  ]
+
+  return await chatWithNexusify(apiKey, 'gpt-4', messages)
+}

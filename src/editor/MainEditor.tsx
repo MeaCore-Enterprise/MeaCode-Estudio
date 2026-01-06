@@ -1,7 +1,8 @@
-import React, { useRef, useEffect, useMemo, useCallback } from 'react'
+import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import { Editor, type OnMount, type Monaco } from '@monaco-editor/react'
-import { getLspCompletions, getLspHover, getLspDiagnostics, saveFile } from '../ipc/bridge'
+import { getLspCompletions, getLspHover, getLspDiagnostics, saveFile, explainCodeWithAI, fixErrorWithAI, refactorCodeWithAI } from '../ipc/bridge'
 import { TabBar, type Tab } from '../components/TabBar'
+import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu'
 import { detectLanguage } from '../utils/languageUtils'
 
 export type MainEditorProps = {
@@ -70,33 +71,59 @@ const setupLanguageProviders = (monaco: Monaco, language: string) => {
   })
 }
 
-const handleEditorDidMount = (tabId: string, language: string): OnMount => {
+const handleEditorDidMount = (
+  tabId: string,
+  language: string,
+  onContextMenu: (e: { x: number; y: number; code: string; range: any }) => void,
+): OnMount => {
   return (editor, monaco) => {
     setupLanguageProviders(monaco, language)
 
     const updateDiagnostics = async (code: string) => {
-      const diags = await getLspDiagnostics(code)
-      const model = editor.getModel()
-      if (!model) return
+    const diags = await getLspDiagnostics(code)
+    const model = editor.getModel()
+    if (!model) return
 
-      const markers = diags.map((d) => ({
-        startLineNumber: d.start_line,
-        startColumn: d.start_col,
-        endLineNumber: d.end_line,
-        endColumn: d.end_col,
-        message: d.message,
-        severity:
-          d.severity === 1
-            ? monaco.MarkerSeverity.Error
-            : d.severity === 2
-            ? monaco.MarkerSeverity.Warning
-            : monaco.MarkerSeverity.Info,
-      }))
+    const markers = diags.map((d) => ({
+      startLineNumber: d.start_line,
+      startColumn: d.start_col,
+      endLineNumber: d.end_line,
+      endColumn: d.end_col,
+      message: d.message,
+      severity:
+        d.severity === 1
+          ? monaco.MarkerSeverity.Error
+          : d.severity === 2
+          ? monaco.MarkerSeverity.Warning
+          : monaco.MarkerSeverity.Info,
+    }))
 
-      monaco.editor.setModelMarkers(model, 'lsp', markers)
+    monaco.editor.setModelMarkers(model, 'lsp', markers)
     }
 
     diagnosticsUpdaters.set(tabId, updateDiagnostics)
+
+    // Store editor reference
+    ;(window as any)[`editor-${tabId}`] = editor
+
+    // Context menu
+    editor.onContextMenu((e) => {
+      const selection = editor.getSelection()
+      if (!selection) return
+
+      const model = editor.getModel()
+      if (!model) return
+
+      const selectedText = model.getValueInRange(selection)
+      const code = selectedText || model.getValue()
+
+      onContextMenu({
+        x: e.event.posx,
+        y: e.event.posy,
+        code,
+        range: selection,
+      })
+    })
   }
 }
 
@@ -110,8 +137,151 @@ export const MainEditor: React.FC<MainEditorProps> = ({
 }) => {
   const editorRef = useRef<{ [key: string]: any }>({})
   const saveTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({})
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number }>({
+    visible: false,
+    x: 0,
+    y: 0,
+  })
+  const [selectedCode, setSelectedCode] = useState<{ code: string; range: any } | null>(null)
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || null
+  
+  const getApiKey = () => {
+    return localStorage.getItem('nexusify-api-key') || ''
+  }
+
+  const handleContextMenu = useCallback((e: { x: number; y: number; code: string; range: any }) => {
+    setSelectedCode({ code: e.code, range: e.range })
+    setContextMenu({ visible: true, x: e.x, y: e.y })
+  }, [])
+
+  const handleExplainCode = useCallback(async () => {
+    if (!selectedCode || !activeTab) return
+    const apiKey = getApiKey()
+    if (!apiKey) {
+      alert('Por favor configura tu API key de Nexusify en el panel de IA')
+      return
+    }
+
+    try {
+      const explanation = await explainCodeWithAI(apiKey, selectedCode.code, activeTab.language)
+      // TODO: Mostrar explicación en un panel o modal
+      console.log('Explanation:', explanation)
+      alert(explanation) // Temporal
+    } catch (err) {
+      console.error('Error explaining code:', err)
+      alert('Error al explicar el código')
+    }
+  }, [selectedCode, activeTab])
+
+  const handleFixError = useCallback(async () => {
+    if (!selectedCode || !activeTab) return
+    const apiKey = getApiKey()
+    if (!apiKey) {
+      alert('Por favor configura tu API key de Nexusify en el panel de IA')
+      return
+    }
+
+    // Get error from diagnostics
+    const diags = await getLspDiagnostics(activeTab.content)
+    const error = diags.find(d => d.severity === 1)?.message || 'Error desconocido'
+
+    try {
+      const fixedCode = await fixErrorWithAI(apiKey, selectedCode.code, error, activeTab.language)
+      // Replace selected code with fixed version
+      if (activeTabId && editorRef.current[activeTabId]) {
+        const editor = editorRef.current[activeTabId]
+        const model = editor.getModel()
+        if (model && selectedCode.range) {
+          model.pushEditOperations(
+            [],
+            [{
+              range: selectedCode.range,
+              text: fixedCode,
+            }],
+            () => null
+          )
+        }
+      }
+    } catch (err) {
+      console.error('Error fixing code:', err)
+      alert('Error al arreglar el código')
+    }
+  }, [selectedCode, activeTab, activeTabId])
+
+  const handleRefactor = useCallback(async () => {
+    if (!selectedCode || !activeTab) return
+    const apiKey = getApiKey()
+    if (!apiKey) {
+      alert('Por favor configura tu API key de Nexusify en el panel de IA')
+      return
+    }
+
+    try {
+      const refactoredCode = await refactorCodeWithAI(apiKey, selectedCode.code, activeTab.language)
+      // Replace selected code with refactored version
+      if (activeTabId && editorRef.current[activeTabId]) {
+        const editor = editorRef.current[activeTabId]
+        const model = editor.getModel()
+        if (model && selectedCode.range) {
+          model.pushEditOperations(
+            [],
+            [{
+              range: selectedCode.range,
+              text: refactoredCode,
+            }],
+            () => null
+          )
+        }
+      }
+    } catch (err) {
+      console.error('Error refactoring code:', err)
+      alert('Error al refactorizar el código')
+    }
+  }, [selectedCode, activeTab, activeTabId])
+
+  const contextMenuItems: ContextMenuItem[] = useMemo(() => {
+    if (!selectedCode) return []
+    
+    const apiKey = getApiKey()
+    const hasApiKey = !!apiKey
+
+    return [
+      {
+        id: 'explain',
+        label: 'Explain this',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+        action: handleExplainCode,
+        disabled: !hasApiKey,
+      },
+      {
+        id: 'fix',
+        label: 'Fix error',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+        action: handleFixError,
+        disabled: !hasApiKey,
+      },
+      {
+        id: 'refactor',
+        label: 'Refactor',
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        ),
+        action: handleRefactor,
+        disabled: !hasApiKey,
+      },
+    ]
+  }, [selectedCode, handleExplainCode, handleFixError, handleRefactor])
 
   const handleSave = useCallback(async (tab: Tab) => {
     if (!tab.path || tab.path === 'untitled') {
@@ -264,23 +434,27 @@ export const MainEditor: React.FC<MainEditorProps> = ({
                 Guardar
               </button>
             )}
-          </div>
+      </div>
           
-          <div className="flex-1">
-            <Editor
+      <div className="flex-1">
+        <Editor
               key={activeTab.id}
-              height="100%"
+          height="100%"
               language={activeTab.language || 'plaintext'}
-              theme="vs-dark"
-              onMount={handleEditorDidMount(activeTab.id, activeTab.language || 'plaintext')}
+          theme="vs-dark"
+              onMount={(editor, monaco) => {
+                const mountHandler = handleEditorDidMount(activeTab.id, activeTab.language || 'plaintext', handleContextMenu)
+                mountHandler(editor, monaco)
+                editorRef.current[activeTab.id] = editor
+              }}
               value={activeTab.content}
               onChange={handleChange(activeTab.id)}
-              options={{
-                minimap: { enabled: true },
-                fontSize: 14,
-                automaticLayout: true,
-                scrollBeyondLastLine: false,
-                smoothScrolling: true,
+          options={{
+            minimap: { enabled: true },
+            fontSize: 14,
+            automaticLayout: true,
+            scrollBeyondLastLine: false,
+            smoothScrolling: true,
                 wordWrap: 'on',
                 lineNumbers: 'on',
                 renderLineHighlight: 'all',
@@ -297,9 +471,16 @@ export const MainEditor: React.FC<MainEditorProps> = ({
                   bracketPairs: true,
                   indentation: true,
                 },
-              }}
-            />
-          </div>
+          }}
+        />
+      </div>
+          <ContextMenu
+            visible={contextMenu.visible}
+            x={contextMenu.x}
+            y={contextMenu.y}
+            items={contextMenuItems}
+            onClose={() => setContextMenu({ visible: false, x: 0, y: 0 })}
+          />
         </>
       )}
     </div>
