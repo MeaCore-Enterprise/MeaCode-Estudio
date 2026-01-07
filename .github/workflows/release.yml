@@ -7,6 +7,7 @@ on:
   workflow_dispatch:  # Permite ejecutar manualmente desde GitHub
 
 # Control de concurrencia: evita builds duplicados si se pushean tags rápido
+# Para releases, sí cancelamos builds anteriores del mismo tag
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true

@@ -9,9 +9,10 @@ on:
       - 'v*'
 
 # Control de concurrencia para PRs
+# Solo cancela builds anteriores del mismo branch/PR, pero permite builds del mismo commit
 concurrency:
-  group: build-${{ github.ref }}-${{ github.head_ref }}
-  cancel-in-progress: true
+  group: build-${{ github.ref }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-check:
