@@ -4,8 +4,8 @@ node_modules
 target/
 dist/
 
-# Generated Tauri icons
-src-tauri/icons/
+# Generated Tauri icons (mantener iconos necesarios en el repo)
+# src-tauri/icons/
 
 # Cache metadata files
 CACHEDIR.TAG

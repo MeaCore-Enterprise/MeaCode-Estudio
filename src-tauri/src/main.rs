@@ -210,11 +210,10 @@ struct TerminalOutput {
 
 #[tauri::command]
 async fn get_current_directory() -> Result<String, String> {
-    std::env::current_dir()
+    Ok(std::env::current_dir()
         .map_err(|e| e.to_string())?
         .to_string_lossy()
-        .to_string()
-        .into()
+        .to_string())
 }
 
 #[tauri::command]

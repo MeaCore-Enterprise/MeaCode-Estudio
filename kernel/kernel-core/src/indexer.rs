@@ -30,6 +30,7 @@ pub enum SymbolKind {
 
 pub struct ProjectIndexer {
     files: RwLock<HashMap<PathBuf, IndexedFile>>,
+    #[allow(dead_code)] // Se guardará para uso futuro (ej: búsquedas relativas al workspace)
     workspace_path: PathBuf,
 }
 
