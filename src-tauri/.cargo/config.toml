@@ -1,6 +1,15 @@
-[build]
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]  # Usar lld linker (más rápido en Windows)
+# Configuración específica por plataforma
+# lld solo funciona en Windows y Linux, no en macOS
 
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-arg=/OPT:REF", "-C", "link-arg=/OPT:ICF"]
+rustflags = [
+  "-C", "link-arg=-fuse-ld=lld",  # Usar lld linker (más rápido en Windows)
+  "-C", "link-arg=/OPT:REF",
+  "-C", "link-arg=/OPT:ICF"
+]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]  # Usar lld linker en Linux
+
+# macOS usa el linker por defecto (ld64), no necesita configuración especial
 

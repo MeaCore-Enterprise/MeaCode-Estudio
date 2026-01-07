@@ -88,6 +88,8 @@
 #             libwebkit2gtk-4.1-dev \
 #             libappindicator3-dev \
 #             librsvg2-dev \
+#             libsoup2.4-dev \
+#             pkg-config \
 #             patchelf
 #
 #       - name: Install frontend dependencies
