@@ -82,6 +82,32 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      - name: Verify Tauri icons exist
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            if [ ! -f "src-tauri/icons/icon.ico" ]; then
+              echo "ERROR: icon.ico not found at src-tauri/icons/icon.ico"
+              ls -la src-tauri/icons/ || echo "icons directory does not exist"
+              exit 1
+            fi
+            echo "✓ icon.ico found"
+          elif [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
+            if [ ! -f "src-tauri/icons/icon.png" ]; then
+              echo "ERROR: icon.png not found at src-tauri/icons/icon.png"
+              ls -la src-tauri/icons/ || echo "icons directory does not exist"
+              exit 1
+            fi
+            echo "✓ icon.png found"
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            if [ ! -f "src-tauri/icons/icon.icns" ]; then
+              echo "ERROR: icon.icns not found at src-tauri/icons/icon.icns"
+              ls -la src-tauri/icons/ || echo "icons directory does not exist"
+              exit 1
+            fi
+            echo "✓ icon.icns found"
+          fi
+
       - name: Install frontend dependencies
         run: pnpm install
 
