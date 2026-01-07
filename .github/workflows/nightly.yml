@@ -1,0 +1,115 @@
+# 🚀 NIGHTLY BUILDS - MeaCode Studio 2.0
+# 
+# Este workflow se activará en el futuro para builds automáticos:
+# - nightly → builds automáticos cada noche (main branch)
+# - beta → builds para testers (beta branch)
+# - stable → releases oficiales (tags v*)
+#
+# Para activar, descomenta y ajusta según necesidades:
+
+# name: Nightly Builds
+#
+# on:
+#   schedule:
+#     - cron: '0 2 * * *'  # Cada día a las 2 AM UTC
+#   workflow_dispatch:
+#
+# concurrency:
+#   group: nightly-${{ github.ref }}
+#   cancel-in-progress: false  # No cancelar, acumular builds
+#
+# jobs:
+#   nightly:
+#     permissions:
+#       contents: write
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - os: windows-latest
+#             target: x86_64-pc-windows-msvc
+#           - os: ubuntu-20.04
+#             target: x86_64-unknown-linux-gnu
+#           - os: macos-latest
+#             target: x86_64-apple-darwin
+#           - os: macos-latest
+#             target: aarch64-apple-darwin
+#
+#     runs-on: ${{ matrix.os }}
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+#
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: '18'
+#
+#       - name: Setup pnpm
+#         uses: pnpm/action-setup@v2
+#         with:
+#           version: 9
+#           run_install: false
+#
+#       - name: Get pnpm store directory
+#         shell: bash
+#         run: |
+#           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+#
+#       - name: Setup pnpm cache
+#         uses: actions/cache@v4
+#         with:
+#           path: ${{ env.STORE_PATH }}
+#           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+#           restore-keys: |
+#             ${{ runner.os }}-pnpm-
+#
+#       - name: Install Rust
+#         uses: dtolnay/rust-toolchain@stable
+#         with:
+#           targets: ${{ matrix.target }}
+#
+#       - name: Cache cargo
+#         uses: actions/cache@v4
+#         with:
+#           path: |
+#             ~/.cargo/registry
+#             ~/.cargo/git
+#             src-tauri/target
+#           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+#           restore-keys: |
+#             ${{ runner.os }}-cargo-
+#
+#       - name: Install dependencies (Ubuntu)
+#         if: matrix.os == 'ubuntu-20.04'
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y \
+#             libwebkit2gtk-4.1-dev \
+#             libappindicator3-dev \
+#             librsvg2-dev \
+#             patchelf
+#
+#       - name: Install frontend dependencies
+#         run: pnpm install
+#
+#       - name: Build frontend
+#         run: pnpm build
+#
+#       - name: Build Tauri app
+#         uses: tauri-apps/tauri-action@v0
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#         with:
+#           projectPath: .
+#           args: --target ${{ matrix.target }}
+#           tagName: nightly-$(date +%Y%m%d)
+#           releaseName: 'MeaCode Studio Nightly $(date +%Y%m%d)'
+#           releaseBody: |
+#             ## MeaCode Studio Nightly Build
+#
+#             Build automático del branch main.
+#             Puede contener características experimentales.
+#           releaseDraft: true
+#           prerelease: true
+
