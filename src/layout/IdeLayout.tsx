@@ -7,9 +7,11 @@ import { QuickOpen, type QuickOpenItem } from '../components/QuickOpen'
 import { CommandPalette, type Command } from '../components/CommandPalette'
 import { SettingsPanel } from '../settings/SettingsPanel'
 import { RunDebugPanel } from '../panels/RunDebugPanel'
+import { WelcomeScreen } from '../components/WelcomeScreen'
 import { getAppInfo, pingKernel, readFile, listDir, openFolder as openFolderDialog, openFile as openFileDialog, saveFileAs } from '../ipc/bridge'
 import { useEditor } from '../hooks/useEditor'
 import { showToast } from '../utils/toast'
+import { loadFeatureFlags, type FeatureFlagsState } from '../hooks/useFeatureFlags'
 
 type KernelStatus = 'idle' | 'ok' | 'error'
 
@@ -28,6 +30,14 @@ export const IdeLayout: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [quickOpenItems, setQuickOpenItems] = useState<QuickOpenItem[]>([])
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlagsState>(() => loadFeatureFlags())
+  const [showWelcome, setShowWelcome] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem('meacode-welcome-dismissed')
+    } catch {
+      return true
+    }
+  })
   
   const {
     tabs,
@@ -69,6 +79,20 @@ export const IdeLayout: React.FC = () => {
       console.error('Error saving session:', err)
     }
   }, [showExplorer, showAiChat, showTerminal, showRunDebug])
+
+  // Reload feature flags when settings panel se cierra (o cada apertura)
+  useEffect(() => {
+    if (!showSettings) {
+      setFeatureFlags(loadFeatureFlags())
+    }
+  }, [showSettings])
+
+  // Aplicar flags que deshabilitan secciones
+  useEffect(() => {
+    if (!featureFlags.aiChat && showAiChat) {
+      setShowAiChat(false)
+    }
+  }, [featureFlags.aiChat, showAiChat])
 
   // Load files for Quick Open
   useEffect(() => {
@@ -169,6 +193,12 @@ export const IdeLayout: React.FC = () => {
     const path = await openFolderDialog()
     if (path) {
       setWorkspacePath(path)
+      try {
+        localStorage.setItem('meacode-welcome-dismissed', 'true')
+      } catch {
+        // ignore
+      }
+      setShowWelcome(false)
       // Reload explorer with new path
       try {
         const entries = await listDir(path)
@@ -335,6 +365,10 @@ export const IdeLayout: React.FC = () => {
       label: 'Toggle AI Chat',
       category: 'View',
       action: () => {
+        if (!featureFlags.aiChat) {
+          showToast('AI Chat está deshabilitado (Settings → Experimental)', 'info')
+          return
+        }
         toggleAiChat()
       },
     },
@@ -939,66 +973,75 @@ export const IdeLayout: React.FC = () => {
         )}
 
         <main className="flex-1 flex flex-col overflow-hidden bg-neutral-950/80 min-w-0">
-          {/* Editor and side panels - Fixed height, no shrink */}
-          <div className="flex-1 flex overflow-hidden min-w-0" style={{ minHeight: 0, maxHeight: '100%' }}>
-            <section className="flex-1 min-w-0 bg-neutral-950" style={{ minWidth: 0, maxWidth: '100%' }}>
-              <MainEditor
-                tabs={tabs}
-                activeTabId={activeTabId}
-                onTabClick={setActiveTab}
-                onTabClose={closeTab}
-                onContentChange={handleContentChange}
-                onTabSaved={handleTabSaved}
-              />
-            </section>
-            {showAiChat && (
-              <section 
-                className="border-l border-neutral-800 bg-neutral-950/95" 
-                style={{ 
-                  width: '320px', 
-                  minWidth: '320px', 
-                  maxWidth: '320px',
-                  flexShrink: 0,
-                  flexGrow: 0
-                }}
-              >
-                <AIChatThemed />
-              </section>
-            )}
-            {showSettings && (
-              <section 
-                className="border-l border-neutral-800 bg-neutral-950/95" 
-                style={{ 
-                  width: '320px', 
-                  minWidth: '320px', 
-                  maxWidth: '320px',
-                  flexShrink: 0,
-                  flexGrow: 0
-                }}
-              >
-                <SettingsPanel
-                  visible={showSettings}
-                  onClose={() => setShowSettings(false)}
-                />
-              </section>
-            )}
-          </div>
-          {/* Bottom panel - Terminal only */}
-          {showTerminal && (
-            <div 
-              className="flex border-t border-neutral-800" 
-              style={{ 
-                height: '200px', 
-                minHeight: '200px', 
-                maxHeight: '200px',
-                flexShrink: 0,
-                flexGrow: 0
-              }}
-            >
-              <section className="flex-1 min-w-0" style={{ minWidth: 0 }}>
-              <TerminalThemed />
-            </section>
-            </div>
+          {showWelcome && !workspacePath ? (
+            <WelcomeScreen
+              onOpenFolder={handleOpenFolder}
+              onCreateProject={() => showToast('Crear proyecto llegará pronto', 'info')}
+            />
+          ) : (
+            <>
+              {/* Editor and side panels - Fixed height, no shrink */}
+              <div className="flex-1 flex overflow-hidden min-w-0" style={{ minHeight: 0, maxHeight: '100%' }}>
+                <section className="flex-1 min-w-0 bg-neutral-950" style={{ minWidth: 0, maxWidth: '100%' }}>
+                  <MainEditor
+                    tabs={tabs}
+                    activeTabId={activeTabId}
+                    onTabClick={setActiveTab}
+                    onTabClose={closeTab}
+                    onContentChange={handleContentChange}
+                    onTabSaved={handleTabSaved}
+                  />
+                </section>
+                {showAiChat && featureFlags.aiChat && (
+                  <section 
+                    className="border-l border-neutral-800 bg-neutral-950/95" 
+                    style={{ 
+                      width: '320px', 
+                      minWidth: '320px', 
+                      maxWidth: '320px',
+                      flexShrink: 0,
+                      flexGrow: 0
+                    }}
+                  >
+                    <AIChatThemed />
+                  </section>
+                )}
+                {showSettings && (
+                  <section 
+                    className="border-l border-neutral-800 bg-neutral-950/95" 
+                    style={{ 
+                      width: '320px', 
+                      minWidth: '320px', 
+                      maxWidth: '320px',
+                      flexShrink: 0,
+                      flexGrow: 0
+                    }}
+                  >
+                    <SettingsPanel
+                      visible={showSettings}
+                      onClose={() => setShowSettings(false)}
+                    />
+                  </section>
+                )}
+              </div>
+              {/* Bottom panel - Terminal only */}
+              {showTerminal && (
+                <div 
+                  className="flex border-t border-neutral-800" 
+                  style={{ 
+                    height: '200px', 
+                    minHeight: '200px', 
+                    maxHeight: '200px',
+                    flexShrink: 0,
+                    flexGrow: 0
+                  }}
+                >
+                  <section className="flex-1 min-w-0" style={{ minWidth: 0 }}>
+                  <TerminalThemed />
+                </section>
+                </div>
+              )}
+            </>
           )}
         </main>
       </div>

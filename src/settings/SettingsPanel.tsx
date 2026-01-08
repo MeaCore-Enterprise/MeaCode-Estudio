@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useSettings, type Settings } from '../hooks/useSettings'
+import { loadFeatureFlags, toggleFeatureFlag, type FeatureFlagsState } from '../hooks/useFeatureFlags'
 
 export type SettingsPanelProps = {
   visible: boolean
@@ -9,12 +10,21 @@ export type SettingsPanelProps = {
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, onSettingsChange }) => {
   const { settings, updateSetting } = useSettings()
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlagsState>(loadFeatureFlags())
+
+  useEffect(() => {
+    setFeatureFlags(loadFeatureFlags())
+  }, [])
 
   const handleUpdateSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     updateSetting(key, value)
     // Notify parent immediately
     const newSettings = { ...settings, [key]: value }
     onSettingsChange?.(newSettings)
+  }
+
+  const handleToggleFlag = (key: keyof FeatureFlagsState) => {
+    setFeatureFlags((prev) => toggleFeatureFlag(prev, key))
   }
 
   if (!visible) return null
@@ -128,6 +138,42 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, 
               <option value="dark">Oscuro</option>
               <option value="light">Claro</option>
             </select>
+          </div>
+        </div>
+
+        {/* Experimental Flags */}
+        <div>
+          <h3 className="text-xs font-semibold text-neutral-300 mb-3">Experimental</h3>
+          <div className="space-y-3">
+            <label className="flex items-center justify-between text-[11px] text-neutral-400">
+              <span>AI Chat (experimental)</span>
+              <input
+                type="checkbox"
+                checked={featureFlags.aiChat}
+                onChange={() => handleToggleFlag('aiChat')}
+                className="w-4 h-4"
+              />
+            </label>
+
+            <label className="flex items-center justify-between text-[11px] text-neutral-400">
+              <span>Terminal streaming (experimental)</span>
+              <input
+                type="checkbox"
+                checked={featureFlags.experimentalTerminal}
+                onChange={() => handleToggleFlag('experimentalTerminal')}
+                className="w-4 h-4"
+              />
+            </label>
+
+            <label className="flex items-center justify-between text-[11px] text-neutral-400">
+              <span>Updater adelantado (experimental)</span>
+              <input
+                type="checkbox"
+                checked={featureFlags.experimentalUpdater}
+                onChange={() => handleToggleFlag('experimentalUpdater')}
+                className="w-4 h-4"
+              />
+            </label>
           </div>
         </div>
       </div>
