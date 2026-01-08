@@ -9,3 +9,31 @@ dist/
 
 # Cache metadata files
 CACHEDIR.TAG
+
+# IDEs
+.cursor/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+build/
+out/
+
+# Tauri
+src-tauri/target/
+
+# Secrets
+*.pem
+*.key

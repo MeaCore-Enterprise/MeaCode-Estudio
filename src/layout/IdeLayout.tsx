@@ -736,13 +736,13 @@ export const IdeLayout: React.FC = () => {
               </svg>
             </button>
             <div className="relative user-menu-container">
-              <button
-                type="button"
+            <button
+              type="button"
                 onClick={(e) => {
                   e.stopPropagation()
                   setShowUserMenu((prev) => !prev)
                 }}
-                className="h-7 w-7 rounded-md border border-neutral-700 bg-neutral-900/80 flex items-center justify-center text-[11px] hover:bg-red-600/40 hover:border-red-500/70"
+              className="h-7 w-7 rounded-md border border-neutral-700 bg-neutral-900/80 flex items-center justify-center text-[11px] hover:bg-red-600/40 hover:border-red-500/70"
                 title="Usuario"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -763,7 +763,7 @@ export const IdeLayout: React.FC = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                     <span>Perfil</span>
-                  </button>
+            </button>
                   <button
                     className="w-full px-3 py-2 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2"
                     onClick={() => {
@@ -921,8 +921,8 @@ export const IdeLayout: React.FC = () => {
               }}
             >
               <section className="flex-1 min-w-0" style={{ minWidth: 0 }}>
-                <TerminalThemed />
-              </section>
+              <TerminalThemed />
+            </section>
             </div>
           )}
         </main>

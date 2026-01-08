@@ -99,7 +99,7 @@ const handleEditorDidMount = (
     }))
 
     monaco.editor.setModelMarkers(model, 'lsp', markers)
-    }
+  }
 
     diagnosticsUpdaters.set(tabId, updateDiagnostics)
 

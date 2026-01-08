@@ -32,6 +32,14 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ]
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/MeaCore-Enterprise/MeaCode-Studio/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "TU_CLAVE_PUBLICA_AQUI"
     }
   }
 }
