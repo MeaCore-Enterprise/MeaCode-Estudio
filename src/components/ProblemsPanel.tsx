@@ -1,5 +1,6 @@
 import React from 'react'
-import { explainCodeWithAI, fixErrorWithAI } from '../ipc/bridge'
+import { explainCodeWithAI, fixErrorWithAI, parseAIError } from '../ipc/bridge'
+import { showToast } from '../utils/toast'
 
 export type Problem = {
   message: string
@@ -33,7 +34,7 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = ({
   const handleExplain = async (problem: Problem) => {
     const apiKey = getApiKey()
     if (!apiKey) {
-      alert('Por favor configura tu API key de Nexusify en el panel de IA')
+      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
       return
     }
 
@@ -45,17 +46,20 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = ({
     try {
       const code = problem.code || fileContent || ''
       const explanation = await explainCodeWithAI(apiKey, code, language)
+      showToast('Explicación generada. Revisa la consola.', 'success')
+      console.log('Explanation:', explanation)
       alert(explanation) // Temporal - debería mostrarse en un panel
     } catch (err) {
       console.error('Error explaining problem:', err)
-      alert('Error al explicar el problema')
+      const aiError = parseAIError(err)
+      showToast(aiError.message, 'error')
     }
   }
 
   const handleFix = async (problem: Problem) => {
     const apiKey = getApiKey()
     if (!apiKey) {
-      alert('Por favor configura tu API key de Nexusify en el panel de IA')
+      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
       return
     }
 
@@ -69,9 +73,11 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = ({
       const fixedCode = await fixErrorWithAI(apiKey, code, problem.message, language)
       // TODO: Aplicar el código corregido
       console.log('Fixed code:', fixedCode)
+      showToast('Código corregido. Revisa la consola.', 'success')
     } catch (err) {
       console.error('Error fixing problem:', err)
-      alert('Error al arreglar el problema')
+      const aiError = parseAIError(err)
+      showToast(aiError.message, 'error')
     }
   }
 

@@ -14,3 +14,61 @@ body {
   color: #e5e7eb;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
+
+/* Editor container - ensure proper focus and selection */
+.monaco-editor-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.monaco-editor-container * {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* Ensure Monaco editor gets focus properly */
+.monaco-editor {
+  outline: none !important;
+}
+
+.monaco-editor .monaco-editor-background {
+  pointer-events: auto;
+}
+
+/* Explorer panel - ensure files are selectable */
+.explorer-file-item {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+
+.explorer-file-item:hover {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Tab bar - ensure tabs are clickable */
+.tab-item {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* Context menu - ensure it's interactive */
+.context-menu {
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Command palette and quick open - ensure they're interactive */
+.command-palette,
+.quick-open {
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}

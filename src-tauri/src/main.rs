@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::process::{Command, Stdio};
+use tauri::api::dialog::{blocking::FileDialogBuilder, MessageDialogBuilder};
 
 use kernel_core::{KernelCore, KernelRequest, KernelResponse};
 use kernel_lsp::{engine_completions, engine_diagnostics, engine_hover};
@@ -180,9 +181,48 @@ async fn read_file(path: String) -> Result<FileContent, String> {
 }
 
 #[tauri::command]
+async fn open_folder() -> Result<Option<String>, String> {
+    let path = FileDialogBuilder::new()
+        .set_title("Select Folder")
+        .pick_folder();
+    
+    Ok(path.map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+async fn open_file() -> Result<Option<String>, String> {
+    let path = FileDialogBuilder::new()
+        .set_title("Open File")
+        .add_filter("All Files", &["*"])
+        .add_filter("Text Files", &["txt", "md", "json", "yaml", "yml"])
+        .add_filter("Code Files", &["rs", "ts", "tsx", "js", "jsx", "py", "java", "go", "cpp", "c", "h"])
+        .pick_file();
+    
+    Ok(path.map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
 async fn save_file(path: String, content: String) -> Result<bool, String> {
     fs::write(&path, content).map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+#[tauri::command]
+async fn save_file_as(content: String) -> Result<Option<String>, String> {
+    let path = FileDialogBuilder::new()
+        .set_title("Save File As")
+        .add_filter("All Files", &["*"])
+        .add_filter("Text Files", &["txt", "md", "json", "yaml", "yml"])
+        .add_filter("Code Files", &["rs", "ts", "tsx", "js", "jsx", "py", "java", "go", "cpp", "c", "h"])
+        .save_file();
+    
+    if let Some(path) = path {
+        let path_str = path.to_string_lossy().to_string();
+        fs::write(&path, content).map_err(|e| e.to_string())?;
+        Ok(Some(path_str))
+    } else {
+        Ok(None)
+    }
 }
 
 #[tauri::command]
@@ -291,7 +331,10 @@ fn main() {
             ping_kernel,
             list_dir,
             read_file,
+            open_folder,
+            open_file,
             save_file,
+            save_file_as,
             execute_command,
             execute_shell_command,
             get_current_directory,

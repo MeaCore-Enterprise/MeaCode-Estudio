@@ -117,14 +117,29 @@ export const TerminalThemed: React.FC = () => {
               term.write(result.stdout)
             }
             if (result.stderr) {
-              term.write(`\x1b[31m${result.stderr}\x1b[0m`)
+              const stderr = result.stderr.trim()
+              // Check for common error patterns
+              if (stderr.includes('not found') || stderr.includes('No such file') || stderr.includes('command not found')) {
+                const cmdName = command.split(/\s+/)[0]
+                term.write(`\x1b[31mError: comando '${cmdName}' no encontrado\x1b[0m\r\n`)
+                term.write(`\x1b[33mTip: Verifica que el comando esté instalado y en tu PATH\x1b[0m\r\n`)
+              } else {
+                term.write(`\x1b[31m${stderr}\x1b[0m`)
+              }
             }
             // Always show exit code if not 0
             if (result.exit_code !== 0) {
               term.write(`\r\n\x1b[33m[Exit code: ${result.exit_code}]\x1b[0m`)
             }
           } catch (err) {
-            term.write(`\x1b[31mError: ${String(err)}\x1b[0m\r\n`)
+            const errorMsg = String(err)
+            if (errorMsg.includes('not found') || errorMsg.includes('No such file')) {
+              const cmdName = command.split(/\s+/)[0]
+              term.write(`\x1b[31mError: comando '${cmdName}' no encontrado\x1b[0m\r\n`)
+              term.write(`\x1b[33mTip: Verifica que el comando esté instalado y en tu PATH\x1b[0m\r\n`)
+            } else {
+              term.write(`\x1b[31mError: ${errorMsg}\x1b[0m\r\n`)
+            }
           }
           
           // Update CWD after command (cd commands change directory)

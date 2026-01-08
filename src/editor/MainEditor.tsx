@@ -1,9 +1,11 @@
 import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import { Editor, type OnMount, type Monaco } from '@monaco-editor/react'
-import { getLspCompletions, getLspHover, getLspDiagnostics, saveFile, explainCodeWithAI, fixErrorWithAI, refactorCodeWithAI } from '../ipc/bridge'
+import { getLspCompletions, getLspHover, getLspDiagnostics, saveFile, explainCodeWithAI, fixErrorWithAI, refactorCodeWithAI, parseAIError } from '../ipc/bridge'
+import { showToast } from '../utils/toast'
 import { TabBar, type Tab } from '../components/TabBar'
 import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu'
 import { detectLanguage } from '../utils/languageUtils'
+import { useSettings } from '../hooks/useSettings'
 
 export type MainEditorProps = {
   tabs: Tab[]
@@ -135,6 +137,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
   onContentChange,
   onTabSaved,
 }) => {
+  const { settings } = useSettings()
   const editorRef = useRef<{ [key: string]: any }>({})
   const saveTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({})
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number }>({
@@ -145,6 +148,19 @@ export const MainEditor: React.FC<MainEditorProps> = ({
   const [selectedCode, setSelectedCode] = useState<{ code: string; range: any } | null>(null)
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || null
+
+  // Update editor options when settings change
+  useEffect(() => {
+    if (activeTabId && editorRef.current[activeTabId]) {
+      const editor = editorRef.current[activeTabId]
+      editor.updateOptions({
+        fontSize: settings.fontSize,
+        tabSize: settings.tabSize,
+        wordWrap: settings.wordWrap ? 'on' : 'off',
+        minimap: { enabled: settings.minimap },
+      })
+    }
+  }, [settings.fontSize, settings.tabSize, settings.wordWrap, settings.minimap, activeTabId])
   
   const getApiKey = () => {
     return localStorage.getItem('nexusify-api-key') || ''
@@ -159,7 +175,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
     if (!selectedCode || !activeTab) return
     const apiKey = getApiKey()
     if (!apiKey) {
-      alert('Por favor configura tu API key de Nexusify en el panel de IA')
+      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
       return
     }
 
@@ -167,10 +183,12 @@ export const MainEditor: React.FC<MainEditorProps> = ({
       const explanation = await explainCodeWithAI(apiKey, selectedCode.code, activeTab.language)
       // TODO: Mostrar explicación en un panel o modal
       console.log('Explanation:', explanation)
+      showToast('Explicación generada. Revisa la consola.', 'success')
       alert(explanation) // Temporal
     } catch (err) {
       console.error('Error explaining code:', err)
-      alert('Error al explicar el código')
+      const aiError = parseAIError(err)
+      showToast(aiError.message, 'error')
     }
   }, [selectedCode, activeTab])
 
@@ -178,7 +196,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
     if (!selectedCode || !activeTab) return
     const apiKey = getApiKey()
     if (!apiKey) {
-      alert('Por favor configura tu API key de Nexusify en el panel de IA')
+      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
       return
     }
 
@@ -201,11 +219,13 @@ export const MainEditor: React.FC<MainEditorProps> = ({
             }],
             () => null
           )
+          showToast('Código corregido aplicado', 'success')
         }
       }
     } catch (err) {
       console.error('Error fixing code:', err)
-      alert('Error al arreglar el código')
+      const aiError = parseAIError(err)
+      showToast(aiError.message, 'error')
     }
   }, [selectedCode, activeTab, activeTabId])
 
@@ -213,7 +233,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
     if (!selectedCode || !activeTab) return
     const apiKey = getApiKey()
     if (!apiKey) {
-      alert('Por favor configura tu API key de Nexusify en el panel de IA')
+      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
       return
     }
 
@@ -236,7 +256,8 @@ export const MainEditor: React.FC<MainEditorProps> = ({
       }
     } catch (err) {
       console.error('Error refactoring code:', err)
-      alert('Error al refactorizar el código')
+      const aiError = parseAIError(err)
+      showToast(aiError.message, 'error')
     }
   }, [selectedCode, activeTab, activeTabId])
 
@@ -436,12 +457,12 @@ export const MainEditor: React.FC<MainEditorProps> = ({
             )}
       </div>
           
-      <div className="flex-1">
+      <div className="flex-1 monaco-editor-container">
         <Editor
               key={activeTab.id}
           height="100%"
               language={activeTab.language || 'plaintext'}
-          theme="vs-dark"
+          theme={settings.theme === 'dark' ? 'vs-dark' : 'vs'}
               onMount={(editor, monaco) => {
                 const mountHandler = handleEditorDidMount(activeTab.id, activeTab.language || 'plaintext', handleContextMenu)
                 mountHandler(editor, monaco)
@@ -450,27 +471,28 @@ export const MainEditor: React.FC<MainEditorProps> = ({
               value={activeTab.content}
               onChange={handleChange(activeTab.id)}
           options={{
-            minimap: { enabled: true },
-            fontSize: 14,
+            minimap: { enabled: settings.minimap },
+            fontSize: settings.fontSize,
+            tabSize: settings.tabSize,
             automaticLayout: true,
             scrollBeyondLastLine: false,
             smoothScrolling: true,
-                wordWrap: 'on',
-                lineNumbers: 'on',
-                renderLineHighlight: 'all',
-                selectOnLineNumbers: true,
-                roundedSelection: false,
-                readOnly: false,
-                cursorStyle: 'line',
-                folding: true,
-                foldingStrategy: 'auto',
-                showFoldingControls: 'always',
-                unfoldOnClickAfterEndOfLine: false,
-                bracketPairColorization: { enabled: true },
-                guides: {
-                  bracketPairs: true,
-                  indentation: true,
-                },
+            wordWrap: settings.wordWrap ? 'on' : 'off',
+            lineNumbers: 'on',
+            renderLineHighlight: 'all',
+            selectOnLineNumbers: true,
+            roundedSelection: false,
+            readOnly: false,
+            cursorStyle: 'line',
+            folding: true,
+            foldingStrategy: 'auto',
+            showFoldingControls: 'always',
+            unfoldOnClickAfterEndOfLine: false,
+            bracketPairColorization: { enabled: true },
+            guides: {
+              bracketPairs: true,
+              indentation: true,
+            },
           }}
         />
       </div>

@@ -52,7 +52,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           return (
             <div
               key={tab.id}
-              className={`
+              className={`tab-item
                 h-full flex items-center gap-1.5 px-3 border-r border-neutral-800 cursor-pointer
                 transition-colors min-w-[120px] max-w-[240px] group
                 ${isActive ? 'bg-neutral-950 text-neutral-100' : 'bg-neutral-900/50 text-neutral-400 hover:bg-neutral-900/80'}
@@ -60,6 +60,7 @@ export const TabBar: React.FC<TabBarProps> = ({
               onClick={() => onTabClick(tab.id)}
               onContextMenu={(e) => handleContextMenu(e, tab.id)}
               title={tab.path}
+              tabIndex={0}
             >
               <span className="truncate text-[11px] flex-1">{getFileName(tab.name)}</span>
               {tab.modified && (

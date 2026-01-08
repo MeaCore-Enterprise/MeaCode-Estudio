@@ -7,8 +7,9 @@ import { QuickOpen, type QuickOpenItem } from '../components/QuickOpen'
 import { CommandPalette, type Command } from '../components/CommandPalette'
 import { SettingsPanel } from '../settings/SettingsPanel'
 import { RunDebugPanel } from '../panels/RunDebugPanel'
-import { getAppInfo, pingKernel, readFile, listDir } from '../ipc/bridge'
+import { getAppInfo, pingKernel, readFile, listDir, openFolder as openFolderDialog, openFile as openFileDialog, saveFileAs } from '../ipc/bridge'
 import { useEditor } from '../hooks/useEditor'
+import { showToast } from '../utils/toast'
 
 type KernelStatus = 'idle' | 'ok' | 'error'
 
@@ -26,6 +27,7 @@ export const IdeLayout: React.FC = () => {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [quickOpenItems, setQuickOpenItems] = useState<QuickOpenItem[]>([])
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   
   const {
     tabs,
@@ -163,6 +165,52 @@ export const IdeLayout: React.FC = () => {
     openFile(file.path, file.content)
   }
   
+  const handleOpenFolder = async () => {
+    const path = await openFolderDialog()
+    if (path) {
+      setWorkspacePath(path)
+      // Reload explorer with new path
+      try {
+        const entries = await listDir(path)
+        const items: QuickOpenItem[] = entries.map((entry) => ({
+          path: entry.path,
+          name: entry.name,
+          type: entry.is_dir ? 'folder' : 'file',
+        }))
+        setQuickOpenItems(items)
+      } catch (err) {
+        console.error('Error loading folder:', err)
+      }
+    }
+    setActiveMenu(null)
+  }
+  
+  const handleOpenFileMenu = async () => {
+    const path = await openFileDialog()
+    if (path) {
+      const file = await readFile(path)
+      if (file) {
+        openFile(file.path, file.content)
+      }
+    }
+    setActiveMenu(null)
+  }
+  
+  const handleSaveAs = async () => {
+    if (activeTabId) {
+      const tab = tabs.find(t => t.id === activeTabId)
+      if (tab) {
+        const path = await saveFileAs(tab.content)
+        if (path) {
+          // Update tab with new path
+          openFile(path, tab.content)
+          markTabSaved(tab.id)
+        }
+      }
+    }
+    setActiveMenu(null)
+  }
+  
   const handleContentChange = (tabId: string, content: string) => {
     updateTabContent(tabId, content, true)
   }
@@ -229,8 +277,7 @@ export const IdeLayout: React.FC = () => {
       label: 'New File',
       category: 'File',
       action: () => {
-        // TODO: Implement new file
-        console.log('New File')
+        showToast('Nueva funcionalidad: Crear archivo (próximamente)', 'info')
       },
       shortcut: 'Ctrl+N',
     },
@@ -239,9 +286,18 @@ export const IdeLayout: React.FC = () => {
       label: 'Open File...',
       category: 'File',
       action: () => {
-        setShowQuickOpen(true)
+        handleOpenFileMenu()
       },
       shortcut: 'Ctrl+O',
+    },
+    {
+      id: 'file.openFolder',
+      label: 'Open Folder...',
+      category: 'File',
+      action: () => {
+        handleOpenFolder()
+      },
+      shortcut: 'Ctrl+K Ctrl+O',
     },
     {
       id: 'file.save',
@@ -305,8 +361,7 @@ export const IdeLayout: React.FC = () => {
       label: 'Start Debugging',
       category: 'Run',
       action: () => {
-        // TODO: Implement debug
-        console.log('Start Debugging')
+        showToast('Debugger en desarrollo (próximamente)', 'info')
       },
       shortcut: 'F5',
     },
@@ -315,8 +370,7 @@ export const IdeLayout: React.FC = () => {
       label: 'Run Without Debugging',
       category: 'Run',
       action: () => {
-        // TODO: Implement run
-        console.log('Run')
+        showToast('Ejecutar sin debugger en desarrollo (próximamente)', 'info')
       },
       shortcut: 'Ctrl+F5',
     },
@@ -364,14 +418,20 @@ export const IdeLayout: React.FC = () => {
                     <span>New File</span>
                     <span className="ml-auto text-[10px] text-neutral-500">Ctrl+N</span>
                   </button>
-                  <button className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2">
+                  <button 
+                    onClick={handleOpenFileMenu}
+                    className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2"
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                     </svg>
                     <span>Open File...</span>
                     <span className="ml-auto text-[10px] text-neutral-500">Ctrl+O</span>
                   </button>
-                  <button className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2">
+                  <button 
+                    onClick={handleOpenFolder}
+                    className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2"
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h12a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
                     </svg>
@@ -386,7 +446,10 @@ export const IdeLayout: React.FC = () => {
                     <span>Save</span>
                     <span className="ml-auto text-[10px] text-neutral-500">Ctrl+S</span>
                   </button>
-                  <button className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2">
+                  <button 
+                    onClick={handleSaveAs}
+                    className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2"
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
                     </svg>
@@ -662,13 +725,25 @@ export const IdeLayout: React.FC = () => {
               {activeMenu === 'help' && (
                 <div className="absolute left-0 top-8 w-56 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg z-50 py-1"
                      onClick={(e) => e.stopPropagation()}>
-                  <button className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2">
+                  <button 
+                    className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2"
+                    onClick={() => {
+                      showToast('Pantalla de bienvenida en desarrollo (próximamente)', 'info')
+                      setActiveMenu(null)
+                    }}
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <span>Welcome</span>
                   </button>
-                  <button className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2">
+                  <button 
+                    className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2"
+                    onClick={() => {
+                      showToast('Documentación en desarrollo (próximamente)', 'info')
+                      setActiveMenu(null)
+                    }}
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                     </svg>
@@ -854,7 +929,7 @@ export const IdeLayout: React.FC = () => {
         {/* Explorer or Run/Debug - Mutually exclusive - Layout responsivo */}
         {showExplorer && (
           <aside className="w-64 border-r border-neutral-800 bg-neutral-950/95 flex-shrink-0">
-            <ExplorerPanel onOpenFile={handleOpenFile} />
+            <ExplorerPanel onOpenFile={handleOpenFile} rootPath={workspacePath || undefined} />
           </aside>
         )}
         {showRunDebug && (

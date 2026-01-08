@@ -137,7 +137,7 @@ export const ExplorerPanel: React.FC<ExplorerPanelProps> = ({ onOpenFile, rootPa
         <button
           type="button"
           onClick={() => toggleNode(node)}
-          className={`
+          className={`explorer-file-item
             flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left
             text-[11px] transition-all duration-150
             ${isActive 
@@ -147,6 +147,7 @@ export const ExplorerPanel: React.FC<ExplorerPanelProps> = ({ onOpenFile, rootPa
             ${node.entry.is_dir ? 'font-medium' : 'font-normal'}
           `}
           style={{ paddingLeft: `${depth * 20 + 8}px` }}
+          tabIndex={0}
         >
           <span className="text-xs flex-shrink-0 w-4 text-center">
             {node.entry.is_dir ? (

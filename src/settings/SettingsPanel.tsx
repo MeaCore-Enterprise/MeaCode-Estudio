@@ -1,24 +1,5 @@
-import React, { useState, useEffect } from 'react'
-
-type Settings = {
-  theme: 'dark' | 'light'
-  fontSize: number
-  autoSave: boolean
-  autoSaveDelay: number
-  tabSize: number
-  wordWrap: boolean
-  minimap: boolean
-}
-
-const DEFAULT_SETTINGS: Settings = {
-  theme: 'dark',
-  fontSize: 14,
-  autoSave: true,
-  autoSaveDelay: 2000,
-  tabSize: 2,
-  wordWrap: true,
-  minimap: true,
-}
+import React from 'react'
+import { useSettings, type Settings } from '../hooks/useSettings'
 
 export type SettingsPanelProps = {
   visible: boolean
@@ -27,25 +8,12 @@ export type SettingsPanelProps = {
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, onSettingsChange }) => {
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
+  const { settings, updateSetting } = useSettings()
 
-  useEffect(() => {
-    // Load settings from localStorage
-    const saved = localStorage.getItem('meacode-settings')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed })
-      } catch {
-        // Use defaults if parse fails
-      }
-    }
-  }, [])
-
-  const updateSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => {
+  const handleUpdateSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => {
+    updateSetting(key, value)
+    // Notify parent immediately
     const newSettings = { ...settings, [key]: value }
-    setSettings(newSettings)
-    localStorage.setItem('meacode-settings', JSON.stringify(newSettings))
     onSettingsChange?.(newSettings)
   }
 
@@ -75,7 +43,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, 
                 min="8"
                 max="32"
                 value={settings.fontSize}
-                onChange={(e) => updateSetting('fontSize', parseInt(e.target.value) || 14)}
+                onChange={(e) => handleUpdateSetting('fontSize', parseInt(e.target.value) || 14)}
                 className="w-full px-2 py-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200"
               />
             </div>
@@ -87,7 +55,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, 
                 min="1"
                 max="8"
                 value={settings.tabSize}
-                onChange={(e) => updateSetting('tabSize', parseInt(e.target.value) || 2)}
+                onChange={(e) => handleUpdateSetting('tabSize', parseInt(e.target.value) || 2)}
                 className="w-full px-2 py-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200"
               />
             </div>
@@ -97,7 +65,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, 
               <input
                 type="checkbox"
                 checked={settings.wordWrap}
-                onChange={(e) => updateSetting('wordWrap', e.target.checked)}
+                onChange={(e) => handleUpdateSetting('wordWrap', e.target.checked)}
                 className="w-4 h-4"
               />
             </div>
@@ -107,7 +75,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, 
               <input
                 type="checkbox"
                 checked={settings.minimap}
-                onChange={(e) => updateSetting('minimap', e.target.checked)}
+                onChange={(e) => handleUpdateSetting('minimap', e.target.checked)}
                 className="w-4 h-4"
               />
             </div>
@@ -123,7 +91,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, 
               <input
                 type="checkbox"
                 checked={settings.autoSave}
-                onChange={(e) => updateSetting('autoSave', e.target.checked)}
+                onChange={(e) => handleUpdateSetting('autoSave', e.target.checked)}
                 className="w-4 h-4"
               />
             </div>
@@ -139,7 +107,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, 
                   max="10000"
                   step="500"
                   value={settings.autoSaveDelay}
-                  onChange={(e) => updateSetting('autoSaveDelay', parseInt(e.target.value) || 2000)}
+                  onChange={(e) => handleUpdateSetting('autoSaveDelay', parseInt(e.target.value) || 2000)}
                   className="w-full px-2 py-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200"
                 />
               </div>
@@ -154,7 +122,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, 
             <label className="block text-[11px] text-neutral-400 mb-1">Tema</label>
             <select
               value={settings.theme}
-              onChange={(e) => updateSetting('theme', e.target.value as 'dark' | 'light')}
+              onChange={(e) => handleUpdateSetting('theme', e.target.value as 'dark' | 'light')}
               className="w-full px-2 py-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200"
             >
               <option value="dark">Oscuro</option>

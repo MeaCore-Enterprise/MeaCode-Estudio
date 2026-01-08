@@ -51,6 +51,10 @@ APIs, features and behavior may change without notice.
 
 ### Development Setup
 
+For detailed development instructions, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+Quick start:
+
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/MeaCore-Enterprise/MeaCode-Studio.git
@@ -64,12 +68,12 @@ APIs, features and behavior may change without notice.
 
 3. **Run in development mode**:
    ```bash
-   pnpm tauri dev
+   pnpm tauri:dev
    ```
 
 4. **Build for production**:
    ```bash
-   pnpm tauri build
+   pnpm tauri:build
    ```
 
 ## Usage
@@ -170,9 +174,10 @@ See [LICENSE](LICENSE) for details.
 
 ## Links
 
-- [Roadmap](Roadmap.md)
-- [Changelog](CHANGELOG.md)
-- [Contributing Guide](CONTRIBUTING.md)
+- [Development Guide](docs/DEVELOPMENT.md) - Detailed setup and development instructions
+- [Roadmap](Roadmap.md) - Project roadmap and future plans
+- [Changelog](CHANGELOG.md) - Version history
+- [Contributing Guide](CONTRIBUTING.md) - How to contribute
 
 ---
 
