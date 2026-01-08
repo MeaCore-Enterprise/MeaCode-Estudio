@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::process::{Command, Stdio};
-use tauri::api::dialog::{blocking::FileDialogBuilder, MessageDialogBuilder};
+use tauri::api::dialog::blocking::FileDialogBuilder;
 
 use kernel_core::{KernelCore, KernelRequest, KernelResponse};
 use kernel_lsp::{engine_completions, engine_diagnostics, engine_hover};
