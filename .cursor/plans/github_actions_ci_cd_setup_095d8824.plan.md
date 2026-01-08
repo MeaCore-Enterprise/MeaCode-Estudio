@@ -1,30 +1,3 @@
----
-name: GitHub Actions CI/CD Setup
-overview: Implementar workflows de GitHub Actions para compilación automática y releases, incluyendo optimizaciones de cache, control de concurrencia y versionado automático.
-todos:
-  - id: create-github-dir
-    content: Crear directorio .github/workflows si no existe
-    status: completed
-  - id: create-release-workflow
-    content: Crear .github/workflows/release.yml con todas las optimizaciones (cache, concurrencia, multi-plataforma)
-    status: completed
-    dependencies:
-      - create-github-dir
-  - id: create-build-workflow
-    content: Crear .github/workflows/build.yml para verificación en PRs
-    status: completed
-    dependencies:
-      - create-github-dir
-  - id: create-nightly-workflow
-    content: Crear .github/workflows/nightly.yml como referencia futura (comentado)
-    status: completed
-    dependencies:
-      - create-github-dir
-  - id: update-tauri-version
-    content: "Actualizar src-tauri/tauri.conf.json: cambiar version de '0.1.0' a '0.0.0'"
-    status: completed
----
-
 # Plan: GitHub Actions CI/CD para MeaCode Studio
 
 ## Objetivo
@@ -133,4 +106,3 @@ graph TD
 Después de implementar, probar con:
 
 1. Crear un tag de prueba: `git tag v0.1.0-test && git push origin v0.1.0-test`
-2. Verificar que el workflow se ejecuta correctamente
