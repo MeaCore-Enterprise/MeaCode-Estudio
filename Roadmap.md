@@ -1,3 +1,43 @@
+# MeaCode Studio - Roadmap
+
+## Executive Summary
+
+This roadmap outlines the vision and planned features for MeaCode Studio, an AI-first desktop IDE built with Rust, Tauri, and modern web technologies.
+
+## Short Term
+
+- Filesystem stabilization and robust file operations
+- Settings persistence and user preferences
+- Enhanced LSP integration with better diagnostics
+- Improved terminal integration with environment detection
+- Auto updater UX improvements and testing
+- Core editor features (minimap, breadcrumbs, multi-cursor)
+- Basic search and replace functionality
+
+## Mid Term
+
+- Plugin architecture research and initial implementation
+- Advanced AI features (local model support, better context understanding)
+- Debugger integration with DAP (Debug Adapter Protocol)
+- Build tasks and project management
+- Enhanced code indexing and symbol navigation
+- GPU acceleration research for code analysis
+- Performance optimizations and profiling tools
+
+## Long Term
+
+- Collaborative features (research and design)
+- Full plugin ecosystem with WASM and Deno sandboxes
+- Advanced AI agents for autonomous code assistance
+- GPU-accelerated code analysis and indexing
+- Enterprise features and integrations
+- Multi-workspace support
+- Advanced refactoring tools
+
+---
+
+## Detailed Technical Specification
+
 🎯 OBJETIVO GENERAL
 
 Quiero que generes un IDE completo desde cero, como si estuvieras construyendo una mezcla entre VS Code + JetBrains + Cursor + DeepSeek Coder, pero más rápido, más modular, más inteligente, más GPU-powered, más actualizado y más futurista.
