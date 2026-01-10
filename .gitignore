@@ -37,3 +37,5 @@ src-tauri/target/
 # Secrets
 *.pem
 *.key
+.tauri/
+tauri-keys-info.txt
