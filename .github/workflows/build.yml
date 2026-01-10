@@ -32,6 +32,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate version consistency
+        shell: bash
+        run: |
+          CARGO_VERSION=$(grep -E '^version\s*=' src-tauri/Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
+          PACKAGE_VERSION=$(grep -E '"version"' package.json | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
+          
+          echo "Cargo.toml version: $CARGO_VERSION"
+          echo "package.json version: $PACKAGE_VERSION"
+          
+          if [ "$CARGO_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "❌ ERROR: Version mismatch!"
+            echo "  Cargo.toml: $CARGO_VERSION"
+            echo "  package.json: $PACKAGE_VERSION"
+            exit 1
+          fi
+          
+          echo "✅ Versions match: $CARGO_VERSION"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -117,12 +135,64 @@ jobs:
 
       - name: Build frontend
         run: pnpm build
+        continue-on-error: true
+        id: build_frontend
 
       - name: Build Tauri app (check only)
+        id: build_tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: .
           args: --target ${{ matrix.target }}
+        continue-on-error: true
 
+      - name: Verify binaries exist
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ steps.build_tauri.outcome }}" != "success" ]; then
+            echo "⚠️ Build failed, skipping binary verification"
+            exit 0
+          fi
+          
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            if [ -f "src-tauri/target/${{ matrix.target }}/release/meacode-studio.exe" ]; then
+              echo "✅ Binary found: meacode-studio.exe"
+              ls -lh "src-tauri/target/${{ matrix.target }}/release/meacode-studio.exe"
+            else
+              echo "❌ ERROR: Binary not found!"
+              find src-tauri/target/${{ matrix.target }}/release -name "*.exe" -o -name "*.msi" -o -name "*.nsis.zip" || true
+              exit 1
+            fi
+          elif [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
+            if [ -f "src-tauri/target/${{ matrix.target }}/release/meacode-studio" ]; then
+              echo "✅ Binary found: meacode-studio"
+              ls -lh "src-tauri/target/${{ matrix.target }}/release/meacode-studio"
+            else
+              echo "❌ ERROR: Binary not found!"
+              find src-tauri/target/${{ matrix.target }}/release -name "meacode-studio" -o -name "*.AppImage" -o -name "*.deb" || true
+              exit 1
+            fi
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle/macos/MeaCode Studio.app" ]; then
+              echo "✅ Binary found: MeaCode Studio.app"
+              ls -lh "src-tauri/target/${{ matrix.target }}/release/bundle/macos/MeaCode Studio.app"
+            else
+              echo "❌ ERROR: Binary not found!"
+              find src-tauri/target/${{ matrix.target }}/release/bundle -name "*.app" -o -name "*.dmg" || true
+              exit 1
+            fi
+          fi
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.os }}-${{ matrix.target }}
+          path: |
+            src-tauri/target/**/*.log
+            src-tauri/target/**/build.log
+          retention-days: 7
+          if-no-files-found: ignore

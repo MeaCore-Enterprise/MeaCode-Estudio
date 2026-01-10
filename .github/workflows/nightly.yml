@@ -40,6 +40,18 @@
 #       - name: Checkout repository
 #         uses: actions/checkout@v4
 #
+#       - name: Get date for tag
+#         id: date
+#         shell: bash
+#         run: |
+#           if [ "${{ runner.os }}" == "Windows" ]; then
+#             DATE=$(powershell -Command "Get-Date -Format 'yyyyMMdd'")
+#           else
+#             DATE=$(date +%Y%m%d)
+#           fi
+#           echo "date=$DATE" >> $GITHUB_OUTPUT
+#           echo "Date for tag: $DATE"
+#
 #       - name: Setup Node.js
 #         uses: actions/setup-node@v4
 #         with:
@@ -105,8 +117,8 @@
 #         with:
 #           projectPath: .
 #           args: --target ${{ matrix.target }}
-#           tagName: nightly-$(date +%Y%m%d)
-#           releaseName: 'MeaCode Studio Nightly $(date +%Y%m%d)'
+#           tagName: nightly-${{ steps.date.outputs.date }}
+#           releaseName: 'MeaCode Studio Nightly ${{ steps.date.outputs.date }}'
 #           releaseBody: |
 #             ## MeaCode Studio Nightly Build
 #
@@ -114,4 +126,3 @@
 #             Puede contener características experimentales.
 #           releaseDraft: true
 #           prerelease: true
-
