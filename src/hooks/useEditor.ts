@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { Tab } from '../components/TabBar'
 import { detectLanguage } from '../utils/languageUtils'
+import { readFile } from '../ipc/bridge'
 
 export type EditorState = {
   tabs: Tab[]
@@ -117,6 +118,45 @@ export function useEditor() {
       console.error('Error loading editor state:', err)
     }
   }, [])
+
+  // Lazy-load de contenido restaurado.
+  // Si la pestaña se restauró con content vacío pero existe `path`, lo cargamos al activarse.
+  useEffect(() => {
+    let cancelled = false
+
+    async function maybeLoadActiveTab() {
+      if (!state.activeTabId) return
+      const tab = state.tabs.find((t) => t.id === state.activeTabId)
+      if (!tab) return
+
+      if (!tab.path || tab.path === 'untitled') return
+      if (tab.content !== '') return
+
+      const targetTabId = tab.id
+      try {
+        const file = await readFile(tab.path)
+        if (cancelled) return
+        if (!file) return
+
+        setState((prev) => ({
+          ...prev,
+          tabs: prev.tabs.map((t) => {
+            if (t.id !== targetTabId) return t
+            // Evita pisar edición del usuario si el contenido ya cambió.
+            if (t.content !== '') return t
+            return { ...t, content: file.content, modified: false }
+          }),
+        }))
+      } catch {
+        // Si falla, mantenemos el contenido vacío.
+      }
+    }
+
+    maybeLoadActiveTab()
+    return () => {
+      cancelled = true
+    }
+  }, [state.activeTabId])
 
   // Save tabs to localStorage
   useEffect(() => {

@@ -36,7 +36,7 @@ const setupLanguageProviders = (monaco: Monaco, language: string) => {
       )
 
       const prefix = word.word || ''
-      const items = await getLspCompletions(prefix)
+      const items = await getLspCompletions(prefix, language)
 
       const suggestions = items.map((item) => ({
         label: item.label,
@@ -57,7 +57,7 @@ const setupLanguageProviders = (monaco: Monaco, language: string) => {
         return { contents: [] }
       }
 
-      const hover = await getLspHover(word.word)
+      const hover = await getLspHover(word.word, language)
       if (!hover) {
         return { contents: [] }
       }
@@ -81,29 +81,58 @@ const handleEditorDidMount = (
   return (editor, monaco) => {
     setupLanguageProviders(monaco, language)
 
-    const updateDiagnostics = async (code: string) => {
-    const diags = await getLspDiagnostics(code)
-    const model = editor.getModel()
-    if (!model) return
+    // Debounce de diagnósticos + gating por "requestId" para ignorar respuestas obsoletas.
+    // Esto evita invocar IPC en cada pulsación y elimina condiciones de carrera.
+    const DIAG_DEBOUNCE_MS = 350
+    let lastRequestId = 0
+    let timer: NodeJS.Timeout | null = null
 
-    const markers = diags.map((d) => ({
-      startLineNumber: d.start_line,
-      startColumn: d.start_col,
-      endLineNumber: d.end_line,
-      endColumn: d.end_col,
-      message: d.message,
-      severity:
-        d.severity === 1
-          ? monaco.MarkerSeverity.Error
-          : d.severity === 2
-          ? monaco.MarkerSeverity.Warning
-          : monaco.MarkerSeverity.Info,
-    }))
+    const scheduleDiagnostics = (code: string) => {
+      lastRequestId += 1
+      const requestId = lastRequestId
 
-    monaco.editor.setModelMarkers(model, 'lsp', markers)
-  }
+      if (timer) clearTimeout(timer)
 
-    diagnosticsUpdaters.set(tabId, updateDiagnostics)
+      timer = setTimeout(async () => {
+        // Si mientras esperábamos hubo nuevas ediciones, ignoramos esta respuesta.
+        if (requestId !== lastRequestId) return
+
+        try {
+          const diags = await getLspDiagnostics(code, language)
+          const model = editor.getModel()
+          if (!model) return
+
+          const markers = diags.map((d) => ({
+            startLineNumber: d.start_line,
+            startColumn: d.start_col,
+            endLineNumber: d.end_line,
+            endColumn: d.end_col,
+            message: d.message,
+            severity:
+              d.severity === 1
+                ? monaco.MarkerSeverity.Error
+                : d.severity === 2
+                ? monaco.MarkerSeverity.Warning
+                : monaco.MarkerSeverity.Info,
+          }))
+
+          monaco.editor.setModelMarkers(model, 'lsp', markers)
+        } catch {
+          // Falla silenciosa: evitamos spamear IPC y dejamos los markers en blanco.
+          const model = editor.getModel()
+          if (!model) return
+          monaco.editor.setModelMarkers(model, 'lsp', [])
+        }
+      }, DIAG_DEBOUNCE_MS)
+    }
+
+    diagnosticsUpdaters.set(tabId, scheduleDiagnostics)
+
+    // Cleanup para evitar timers colgados si se cierra/desmonta el editor.
+    editor.onDidDispose(() => {
+      if (timer) clearTimeout(timer)
+      diagnosticsUpdaters.delete(tabId)
+    })
 
     // Store editor reference
     ;(window as any)[`editor-${tabId}`] = editor
@@ -201,7 +230,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
     }
 
     // Get error from diagnostics
-    const diags = await getLspDiagnostics(activeTab.content)
+    const diags = await getLspDiagnostics(activeTab.content, activeTab.language)
     const error = diags.find(d => d.severity === 1)?.message || 'Error desconocido'
 
     try {
@@ -328,16 +357,27 @@ export const MainEditor: React.FC<MainEditorProps> = ({
       updater(v ?? '')
     }
 
-    // Auto-save after 2 seconds of inactivity
+    // Auto-save según settings (evita guardados innecesarios).
     const tab = tabs.find((t) => t.id === tabId)
-    if (tab && tab.path && tab.path !== 'untitled') {
+    if (!tab || !tab.path || tab.path === 'untitled') return
+
+    if (!settings.autoSave) {
       if (saveTimeoutRef.current[tabId]) {
         clearTimeout(saveTimeoutRef.current[tabId])
+        delete saveTimeoutRef.current[tabId]
       }
-      saveTimeoutRef.current[tabId] = setTimeout(() => {
-        handleSave(tab)
-      }, 2000)
+      return
     }
+
+    if (!tab.modified) return
+
+    if (saveTimeoutRef.current[tabId]) {
+      clearTimeout(saveTimeoutRef.current[tabId])
+    }
+
+    saveTimeoutRef.current[tabId] = setTimeout(() => {
+      handleSave(tab)
+    }, settings.autoSaveDelay)
   }
 
   // Keyboard shortcut: Ctrl+S to save

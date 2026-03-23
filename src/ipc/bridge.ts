@@ -68,9 +68,10 @@ export type LspDiagnostic = {
   end_col: number
 }
 
-export async function getLspDiagnostics(text: string): Promise<LspDiagnostic[]> {
+export async function getLspDiagnostics(text: string, language?: string): Promise<LspDiagnostic[]> {
   try {
-    return await callKernel<LspDiagnostic[]>('lsp_diagnostics', { text })
+    const payload = language ? { text, language } : { text }
+    return await callKernel<LspDiagnostic[]>('lsp_diagnostics', payload)
   } catch (err) {
     console.error('Error calling lsp_diagnostics', err)
     return []
@@ -82,9 +83,10 @@ export type LspCompletionItem = {
   detail?: string
 }
 
-export async function getLspCompletions(prefix: string): Promise<LspCompletionItem[]> {
+export async function getLspCompletions(prefix: string, language?: string): Promise<LspCompletionItem[]> {
   try {
-    return await callKernel<LspCompletionItem[]>('lsp_completion', { prefix })
+    const payload = language ? { prefix, language } : { prefix }
+    return await callKernel<LspCompletionItem[]>('lsp_completion', payload)
   } catch (err) {
     console.error('Error calling lsp_completion', err)
     return []
@@ -95,9 +97,10 @@ export type LspHoverResult = {
   contents: string
 }
 
-export async function getLspHover(symbol: string): Promise<LspHoverResult | null> {
+export async function getLspHover(symbol: string, language?: string): Promise<LspHoverResult | null> {
   try {
-    return await callKernel<LspHoverResult>('lsp_hover', { symbol })
+    const payload = language ? { symbol, language } : { symbol }
+    return await callKernel<LspHoverResult>('lsp_hover', payload)
   } catch (err) {
     console.error('Error calling lsp_hover', err)
     return null
@@ -267,6 +270,10 @@ export async function chatWithNexusify(
     throw new Error('API key no configurada')
   }
 
+  const timeoutMs = 60_000
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
   try {
     const response = await fetch('https://api.nexusify.co/v1/chat/completions', {
       method: 'POST',
@@ -279,6 +286,7 @@ export async function chatWithNexusify(
         messages,
         temperature,
       }),
+      signal: controller.signal,
     })
 
     if (!response.ok) {
@@ -290,8 +298,15 @@ export async function chatWithNexusify(
     const data: NexusifyChatResponse = await response.json()
     return data.choices[0]?.message?.content || 'No response'
   } catch (err) {
+    const maybeErr = err as any
+    if (maybeErr?.name === 'AbortError') {
+      throw new Error(`Solicitud agotó el tiempo de espera (${timeoutMs}ms)`)
+    }
+
     console.error('Error calling Nexusify API:', err)
     throw err
+  } finally {
+    clearTimeout(timer)
   }
 }
 

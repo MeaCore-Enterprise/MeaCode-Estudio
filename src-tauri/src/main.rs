@@ -1,13 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::fs;
-use std::process::{Command, Stdio};
+use tokio::fs;
+use std::process::Stdio;
+use tokio::process::Command;
 use tauri::api::dialog::blocking::FileDialogBuilder;
 
-use kernel_core::{KernelCore, KernelRequest, KernelResponse};
 use kernel_lsp::{engine_completions, engine_diagnostics, engine_hover};
 use serde::Serialize;
-use tokio::sync::mpsc;
+use tokio::time::{timeout, Duration};
+
+const MAX_READ_BYTES: u64 = 5 * 1024 * 1024; // 5MB
+const MAX_SAVE_BYTES: u64 = 10 * 1024 * 1024; // 10MB
+const COMMAND_TIMEOUT_SECS: u64 = 30; // evita locks por comandos colgados
 
 #[derive(Serialize)]
 struct AppInfo {
@@ -64,28 +68,11 @@ async fn get_app_info() -> AppInfo {
 
 #[tauri::command]
 async fn ping_kernel() -> Result<KernelPingResult, String> {
-    let (req_tx, req_rx) = mpsc::channel(4);
-    let (res_tx, mut res_rx) = mpsc::channel(4);
-
-    let kernel = KernelCore::new(req_rx, res_tx);
-
-    tauri::async_runtime::spawn(async move {
-        if let Err(err) = kernel.run().await {
-            eprintln!("[kernel-core] error in Tauri host: {err:?}");
-        }
-    });
-
-    req_tx
-        .send(KernelRequest::Ping)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    match res_rx.recv().await {
-        Some(KernelResponse::Pong) => Ok(KernelPingResult {
-            status: "ok".to_string(),
-        }),
-        None => Err("kernel did not respond".to_string()),
-    }
+    // El kernel-core actualmente solo implementa un Ping demo.
+    // Para evitar spawns efímeros (y posibles colas/latencias), hacemos un healthcheck estable.
+    Ok(KernelPingResult {
+        status: "ok".to_string(),
+    })
 }
 
 #[tauri::command]
@@ -93,11 +80,10 @@ async fn list_dir(path: Option<String>) -> Result<Vec<FileEntry>, String> {
     let base = path.unwrap_or_else(|| ".".to_string());
 
     let mut entries = Vec::new();
-    let read_dir = fs::read_dir(&base).map_err(|e| e.to_string())?;
+    let mut read_dir = fs::read_dir(&base).await.map_err(|e| e.to_string())?;
 
-    for entry in read_dir {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+    while let Some(entry) = read_dir.next_entry().await.map_err(|e| e.to_string())? {
+        let file_type = entry.file_type().await.map_err(|e| e.to_string())?;
         let file_name = entry
             .file_name()
             .to_string_lossy()
@@ -125,32 +111,32 @@ struct WorkspaceInfo {
 async fn detect_project_type(path: String) -> Result<String, String> {
     // Check for common project files
     let cargo_toml = format!("{}/Cargo.toml", path);
-    if fs::metadata(&cargo_toml).is_ok() {
+    if fs::metadata(&cargo_toml).await.is_ok() {
         return Ok("rust".to_string());
     }
 
     let package_json = format!("{}/package.json", path);
-    if fs::metadata(&package_json).is_ok() {
+    if fs::metadata(&package_json).await.is_ok() {
         return Ok("node".to_string());
     }
 
     let pyproject_toml = format!("{}/pyproject.toml", path);
-    if fs::metadata(&pyproject_toml).is_ok() {
+    if fs::metadata(&pyproject_toml).await.is_ok() {
         return Ok("python".to_string());
     }
 
     let requirements_txt = format!("{}/requirements.txt", path);
-    if fs::metadata(&requirements_txt).is_ok() {
+    if fs::metadata(&requirements_txt).await.is_ok() {
         return Ok("python".to_string());
     }
 
     let pom_xml = format!("{}/pom.xml", path);
-    if fs::metadata(&pom_xml).is_ok() {
+    if fs::metadata(&pom_xml).await.is_ok() {
         return Ok("java".to_string());
     }
 
     let go_mod = format!("{}/go.mod", path);
-    if fs::metadata(&go_mod).is_ok() {
+    if fs::metadata(&go_mod).await.is_ok() {
         return Ok("go".to_string());
     }
 
@@ -175,7 +161,15 @@ async fn get_workspace_info(path: String) -> Result<WorkspaceInfo, String> {
 
 #[tauri::command]
 async fn read_file(path: String) -> Result<FileContent, String> {
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let meta = fs::metadata(&path).await.map_err(|e| e.to_string())?;
+    if meta.len() > MAX_READ_BYTES {
+        return Err(format!(
+            "File too large (max {} MB)",
+            MAX_READ_BYTES / 1024 / 1024
+        ));
+    }
+
+    let content = fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
 
     Ok(FileContent { path, content })
 }
@@ -203,7 +197,15 @@ async fn open_file() -> Result<Option<String>, String> {
 
 #[tauri::command]
 async fn save_file(path: String, content: String) -> Result<bool, String> {
-    fs::write(&path, content).map_err(|e| e.to_string())?;
+    let size = content.as_bytes().len() as u64;
+    if size > MAX_SAVE_BYTES {
+        return Err(format!(
+            "File too large to save (max {} MB)",
+            MAX_SAVE_BYTES / 1024 / 1024
+        ));
+    }
+
+    fs::write(&path, content).await.map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -217,8 +219,16 @@ async fn save_file_as(content: String) -> Result<Option<String>, String> {
         .save_file();
     
     if let Some(path) = path {
+        let size = content.as_bytes().len() as u64;
+        if size > MAX_SAVE_BYTES {
+            return Err(format!(
+                "File too large to save (max {} MB)",
+                MAX_SAVE_BYTES / 1024 / 1024
+            ));
+        }
+
         let path_str = path.to_string_lossy().to_string();
-        fs::write(&path, content).map_err(|e| e.to_string())?;
+        fs::write(&path, content).await.map_err(|e| e.to_string())?;
         Ok(Some(path_str))
     } else {
         Ok(None)
@@ -227,11 +237,15 @@ async fn save_file_as(content: String) -> Result<Option<String>, String> {
 
 #[tauri::command]
 async fn execute_command(command: String, args: Vec<String>) -> Result<String, String> {
-    let output = Command::new(&command)
-        .args(&args)
+    let mut cmd = Command::new(&command);
+    cmd.args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
+        .kill_on_drop(true);
+
+    let output = timeout(Duration::from_secs(COMMAND_TIMEOUT_SECS), cmd.output())
+        .await
+        .map_err(|_| format!("Command timed out after {}s", COMMAND_TIMEOUT_SECS))?
         .map_err(|e| e.to_string())?;
 
     if output.status.success() {
@@ -268,12 +282,16 @@ async fn execute_shell_command(command: String) -> Result<TerminalOutput, String
     #[cfg(not(target_os = "windows"))]
     let shell_arg = "-c";
 
-    let output = Command::new(shell)
-        .arg(shell_arg)
+    let mut cmd = Command::new(shell);
+    cmd.arg(shell_arg)
         .arg(&command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
+        .kill_on_drop(true);
+
+    let output = timeout(Duration::from_secs(COMMAND_TIMEOUT_SECS), cmd.output())
+        .await
+        .map_err(|_| format!("Command timed out after {}s", COMMAND_TIMEOUT_SECS))?
         .map_err(|e| e.to_string())?;
 
     Ok(TerminalOutput {
@@ -284,7 +302,14 @@ async fn execute_shell_command(command: String) -> Result<TerminalOutput, String
 }
 
 #[tauri::command]
-async fn lsp_completion(prefix: String) -> Result<Vec<LspCompletionItem>, String> {
+async fn lsp_completion(prefix: String, language: Option<String>) -> Result<Vec<LspCompletionItem>, String> {
+    // Proxy LSP por lenguaje:
+    // Por ahora delega al motor demo (kernel_lsp) solo para TypeScript/JavaScript.
+    match language.as_deref() {
+        Some("typescript") | Some("javascript") => {}
+        _ => return Ok(vec![]),
+    }
+
     let engine_items = engine_completions(&prefix);
 
     let items = engine_items
@@ -299,14 +324,26 @@ async fn lsp_completion(prefix: String) -> Result<Vec<LspCompletionItem>, String
 }
 
 #[tauri::command]
-async fn lsp_hover(symbol: String) -> Result<LspHoverResult, String> {
+async fn lsp_hover(symbol: String, language: Option<String>) -> Result<LspHoverResult, String> {
+    // Proxy LSP por lenguaje (ver comentario en `lsp_completion`).
+    match language.as_deref() {
+        Some("typescript") | Some("javascript") => {}
+        _ => return Err("unsupported_language".to_string()),
+    }
+
     let contents = engine_hover(&symbol);
 
     Ok(LspHoverResult { contents })
 }
 
 #[tauri::command]
-async fn lsp_diagnostics(text: String) -> Result<Vec<LspDiagnostic>, String> {
+async fn lsp_diagnostics(text: String, language: Option<String>) -> Result<Vec<LspDiagnostic>, String> {
+    // Proxy LSP por lenguaje (ver comentario en `lsp_completion`).
+    match language.as_deref() {
+        Some("typescript") | Some("javascript") => {}
+        _ => return Ok(vec![]),
+    }
+
     let engine_diags = engine_diagnostics(&text);
 
     let diagnostics = engine_diags

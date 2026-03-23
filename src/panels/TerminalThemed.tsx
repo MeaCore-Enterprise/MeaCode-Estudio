@@ -10,6 +10,8 @@ export const TerminalThemed: React.FC = () => {
   const fitAddonRef = useRef<FitAddon | null>(null)
   const currentInputRef = useRef<string>('')
   const currentCwdRef = useRef<string>('.')
+  const commandQueueRef = useRef<string[]>([])
+  const isExecutingRef = useRef<boolean>(false)
   const [currentLine, setCurrentLine] = useState('')
   const [commandHistory, setCommandHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
@@ -81,7 +83,69 @@ export const TerminalThemed: React.FC = () => {
       writePrompt()
     })
 
-    const handleData = async (data: string) => {
+    let disposed = false
+
+    const processQueue = async () => {
+      while (commandQueueRef.current.length > 0) {
+        if (disposed) return
+        const command = commandQueueRef.current.shift()
+        if (!command) continue
+
+        try {
+          const result = await executeShellCommand(command)
+          if (result.stdout) {
+            term.write(result.stdout)
+          }
+          if (result.stderr) {
+            const stderr = result.stderr.trim()
+            // Check for common error patterns
+            if (
+              stderr.includes('not found') ||
+              stderr.includes('No such file') ||
+              stderr.includes('command not found')
+            ) {
+              const cmdName = command.split(/\s+/)[0]
+              term.write(`\x1b[31mError: comando '${cmdName}' no encontrado\x1b[0m\r\n`)
+              term.write(`\x1b[33mTip: Verifica que el comando esté instalado y en tu PATH\x1b[0m\r\n`)
+            } else {
+              term.write(`\x1b[31m${stderr}\x1b[0m`)
+            }
+          }
+          // Always show exit code if not 0
+          if (result.exit_code !== 0) {
+            term.write(`\r\n\x1b[33m[Exit code: ${result.exit_code}]\x1b[0m`)
+          }
+        } catch (err) {
+          const errorMsg = String(err)
+          if (errorMsg.includes('not found') || errorMsg.includes('No such file')) {
+            const cmdName = command.split(/\s+/)[0]
+            term.write(`\x1b[31mError: comando '${cmdName}' no encontrado\x1b[0m\r\n`)
+            term.write(`\x1b[33mTip: Verifica que el comando esté instalado y en tu PATH\x1b[0m\r\n`)
+          } else {
+            term.write(`\x1b[31mError: ${errorMsg}\x1b[0m\r\n`)
+          }
+        }
+
+        // Actualiza prompt tras cada ejecución (cd también cambia cwd).
+        try {
+          await updatePrompt()
+        } catch {
+          // ignore
+        }
+        writePrompt()
+      }
+
+      isExecutingRef.current = false
+    }
+
+    const startProcessing = () => {
+      if (isExecutingRef.current) return
+      if (commandQueueRef.current.length === 0) return
+      isExecutingRef.current = true
+      void processQueue()
+    }
+
+    const handleData = (data: string) => {
       const code = data.charCodeAt(0)
 
       // Ctrl+C (interrupt)
@@ -89,16 +153,22 @@ export const TerminalThemed: React.FC = () => {
         term.write('^C\r\n')
         currentInputRef.current = ''
         setCurrentLine('')
-        await updatePrompt()
-        writePrompt()
+        void updatePrompt()
+          .catch(() => {
+            currentCwdRef.current = '.'
+          })
+          .finally(() => writePrompt())
         return
       }
 
       // Ctrl+L (clear screen)
       if (code === 12) {
         term.clear()
-        await updatePrompt()
-        writePrompt()
+        void updatePrompt()
+          .catch(() => {
+            currentCwdRef.current = '.'
+          })
+          .finally(() => writePrompt())
         return
       }
 
@@ -108,49 +178,20 @@ export const TerminalThemed: React.FC = () => {
         const command = currentInputRef.current.trim()
 
         if (command) {
+          // Cola: dejamos que el procesamiento ocurra fuera del handler de entrada.
+          commandQueueRef.current.push(command)
           setCommandHistory((prev) => [...prev, command])
           setHistoryIndex(-1)
-
-          try {
-            const result = await executeShellCommand(command)
-            if (result.stdout) {
-              term.write(result.stdout)
-            }
-            if (result.stderr) {
-              const stderr = result.stderr.trim()
-              // Check for common error patterns
-              if (stderr.includes('not found') || stderr.includes('No such file') || stderr.includes('command not found')) {
-                const cmdName = command.split(/\s+/)[0]
-                term.write(`\x1b[31mError: comando '${cmdName}' no encontrado\x1b[0m\r\n`)
-                term.write(`\x1b[33mTip: Verifica que el comando esté instalado y en tu PATH\x1b[0m\r\n`)
-              } else {
-                term.write(`\x1b[31m${stderr}\x1b[0m`)
-              }
-            }
-            // Always show exit code if not 0
-            if (result.exit_code !== 0) {
-              term.write(`\r\n\x1b[33m[Exit code: ${result.exit_code}]\x1b[0m`)
-            }
-          } catch (err) {
-            const errorMsg = String(err)
-            if (errorMsg.includes('not found') || errorMsg.includes('No such file')) {
-              const cmdName = command.split(/\s+/)[0]
-              term.write(`\x1b[31mError: comando '${cmdName}' no encontrado\x1b[0m\r\n`)
-              term.write(`\x1b[33mTip: Verifica que el comando esté instalado y en tu PATH\x1b[0m\r\n`)
-            } else {
-              term.write(`\x1b[31mError: ${errorMsg}\x1b[0m\r\n`)
-            }
-          }
-          
-          // Update CWD after command (cd commands change directory)
-          await updatePrompt()
+          startProcessing()
         }
 
         currentInputRef.current = ''
         setCurrentLine('')
-        writePrompt()
         return
       }
+
+      // Mientras haya un comando ejecutándose, evitamos que el input compita con la salida.
+      if (isExecutingRef.current) return
 
       // Backspace
       if (code === 127 || code === 8) {
@@ -180,6 +221,10 @@ export const TerminalThemed: React.FC = () => {
     terminalRef.current = term
 
     return () => {
+      // Detiene el procesamiento de la cola y libera el terminal.
+      disposed = true
+      commandQueueRef.current = []
+      isExecutingRef.current = false
       term.dispose()
       terminalRef.current = null
       fitAddonRef.current = null
