@@ -122,8 +122,15 @@ export const IdeLayout: React.FC = () => {
         setShowQuickOpen(true)
         return
       }
+
+      // Ctrl+K for Command Palette (issue #17)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setShowCommandPalette(true)
+        return
+      }
       
-      // Ctrl+Shift+P for Command Palette
+      // Ctrl+Shift+P for Command Palette (fallback / alternative)
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
         e.preventDefault()
         setShowCommandPalette(true)
@@ -1037,7 +1044,7 @@ export const IdeLayout: React.FC = () => {
                   }}
                 >
                   <section className="flex-1 min-w-0" style={{ minWidth: 0 }}>
-                  <TerminalThemed />
+                  <TerminalThemed visible={showTerminal} />
                 </section>
                 </div>
               )}

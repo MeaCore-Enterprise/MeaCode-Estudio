@@ -85,7 +85,7 @@ const handleEditorDidMount = (
     // Esto evita invocar IPC en cada pulsación y elimina condiciones de carrera.
     const DIAG_DEBOUNCE_MS = 350
     let lastRequestId = 0
-    let timer: NodeJS.Timeout | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
 
     const scheduleDiagnostics = (code: string) => {
       lastRequestId += 1
@@ -168,7 +168,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
 }) => {
   const { settings } = useSettings()
   const editorRef = useRef<{ [key: string]: any }>({})
-  const saveTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({})
+  const saveTimeoutRef = useRef<{ [key: string]: ReturnType<typeof setTimeout> }>({})
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number }>({
     visible: false,
     x: 0,
