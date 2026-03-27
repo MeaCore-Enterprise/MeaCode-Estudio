@@ -73,16 +73,25 @@ jobs:
         run: |
           CARGO_VERSION=$(grep -E '^version\s*=' src-tauri/Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
           PACKAGE_VERSION=$(grep -E '"version"' package.json | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
+          TAURI_CONF_VERSION=$(grep -E '"version"' src-tauri/tauri.conf.json | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
           TAG_VERSION="${{ steps.version.outputs.version }}"
           
           echo "Cargo.toml version: $CARGO_VERSION"
           echo "package.json version: $PACKAGE_VERSION"
+          echo "tauri.conf.json version: $TAURI_CONF_VERSION"
           echo "Tag version: $TAG_VERSION"
           
           if [ "$CARGO_VERSION" != "$PACKAGE_VERSION" ]; then
             echo "❌ ERROR: Version mismatch between Cargo.toml and package.json!"
             echo "  Cargo.toml: $CARGO_VERSION"
             echo "  package.json: $PACKAGE_VERSION"
+            exit 1
+          fi
+
+          if [ "$CARGO_VERSION" != "$TAURI_CONF_VERSION" ]; then
+            echo "❌ ERROR: Version mismatch between Cargo.toml and src-tauri/tauri.conf.json!"
+            echo "  Cargo.toml: $CARGO_VERSION"
+            echo "  tauri.conf.json: $TAURI_CONF_VERSION"
             exit 1
           fi
           
