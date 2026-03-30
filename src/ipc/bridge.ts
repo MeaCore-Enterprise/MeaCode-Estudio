@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/tauri'
+import { getChatCompletionsUrl, loadAISettings, type AISettings } from '../utils/aiSettings'
 
 export async function callKernel<T = unknown>(
   command: string,
@@ -260,29 +261,40 @@ export function parseAIError(error: unknown): AIError {
   }
 }
 
-export async function chatWithNexusify(
-  apiKey: string,
-  model: string,
+const CHAT_TIMEOUT_MS = 120_000
+
+/**
+ * Chat completions con API estilo OpenAI (Nexusify, OpenAI, LM Studio, Ollama /v1, etc.).
+ */
+export async function chatCompletion(
+  settings: AISettings,
   messages: NexusifyMessage[],
   temperature: number = 0.7,
 ): Promise<string> {
-  if (!apiKey || apiKey.trim() === '') {
+  if (settings.mode !== 'ollama' && !settings.apiKey?.trim()) {
     throw new Error('API key no configurada')
   }
+  if (!settings.model?.trim()) {
+    throw new Error('Modelo no configurado')
+  }
 
-  const timeoutMs = 60_000
+  const url = getChatCompletionsUrl(settings)
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS)
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (settings.apiKey?.trim()) {
+    headers['Authorization'] = `Bearer ${settings.apiKey.trim()}`
+  }
 
   try {
-    const response = await fetch('https://api.nexusify.co/v1/chat/completions', {
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
-        model,
+        model: settings.model.trim(),
         messages,
         temperature,
       }),
@@ -291,31 +303,53 @@ export async function chatWithNexusify(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: { message: `HTTP ${response.status}` } }))
-      const errorMessage = errorData.error?.message || `HTTP ${response.status}`
+      const errorMessage =
+        (errorData as { error?: { message?: string } }).error?.message || `HTTP ${response.status}`
       throw new Error(errorMessage)
     }
 
     const data: NexusifyChatResponse = await response.json()
-    return data.choices[0]?.message?.content || 'No response'
+    return data.choices[0]?.message?.content || 'Sin respuesta'
   } catch (err) {
-    const maybeErr = err as any
+    const maybeErr = err as { name?: string }
     if (maybeErr?.name === 'AbortError') {
-      throw new Error(`Solicitud agotó el tiempo de espera (${timeoutMs}ms)`)
+      throw new Error(`Solicitud agotó el tiempo de espera (${CHAT_TIMEOUT_MS}ms)`)
     }
-
-    console.error('Error calling Nexusify API:', err)
+    console.error('Error chat completion:', err)
     throw err
   } finally {
     clearTimeout(timer)
   }
 }
 
+/** Compatibilidad: Nexusify con clave explícita. */
+export async function chatWithNexusify(
+  apiKey: string,
+  model: string,
+  messages: NexusifyMessage[],
+  temperature: number = 0.7,
+): Promise<string> {
+  const base = loadAISettings()
+  return chatCompletion(
+    {
+      ...base,
+      mode: 'nexusify',
+      apiKey,
+      model,
+      baseUrl: 'https://api.nexusify.co/v1',
+    },
+    messages,
+    temperature,
+  )
+}
+
 // AI Code Actions
 export async function explainCodeWithAI(
-  apiKey: string,
   code: string,
   language?: string,
+  settings?: AISettings,
 ): Promise<string> {
+  const s = settings ?? loadAISettings()
   const messages: NexusifyMessage[] = [
     {
       role: 'system',
@@ -327,15 +361,16 @@ export async function explainCodeWithAI(
     },
   ]
 
-  return await chatWithNexusify(apiKey, 'gpt-4', messages)
+  return chatCompletion(s, messages)
 }
 
 export async function fixErrorWithAI(
-  apiKey: string,
   code: string,
   error: string,
   language?: string,
+  settings?: AISettings,
 ): Promise<string> {
+  const s = settings ?? loadAISettings()
   const messages: NexusifyMessage[] = [
     {
       role: 'system',
@@ -347,14 +382,15 @@ export async function fixErrorWithAI(
     },
   ]
 
-  return await chatWithNexusify(apiKey, 'gpt-4', messages)
+  return chatCompletion(s, messages)
 }
 
 export async function refactorCodeWithAI(
-  apiKey: string,
   code: string,
   language?: string,
+  settings?: AISettings,
 ): Promise<string> {
+  const s = settings ?? loadAISettings()
   const messages: NexusifyMessage[] = [
     {
       role: 'system',
@@ -366,5 +402,5 @@ export async function refactorCodeWithAI(
     },
   ]
 
-  return await chatWithNexusify(apiKey, 'gpt-4', messages)
+  return chatCompletion(s, messages)
 }

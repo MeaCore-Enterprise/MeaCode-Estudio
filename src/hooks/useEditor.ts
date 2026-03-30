@@ -129,7 +129,7 @@ export function useEditor() {
       const tab = state.tabs.find((t) => t.id === state.activeTabId)
       if (!tab) return
 
-      if (!tab.path || tab.path === 'untitled') return
+      if (!tab.path || tab.path === 'untitled' || tab.path.startsWith('untitled-')) return
       if (tab.content !== '') return
 
       const targetTabId = tab.id
@@ -237,6 +237,26 @@ export function useEditor() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  const newFile = useCallback(() => {
+    setState((prev) => {
+      const untitledCount = prev.tabs.filter((t) => t.path.startsWith('untitled')).length
+      const index = untitledCount + 1
+      const path = index === 1 ? 'untitled' : `untitled-${index}`
+      const newTab: Tab = {
+        id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        path,
+        name: index === 1 ? 'Sin título' : `Sin título ${index}`,
+        content: '',
+        modified: false,
+        language: 'plaintext',
+      }
+      return {
+        tabs: [...prev.tabs, newTab],
+        activeTabId: newTab.id,
+      }
+    })
+  }, [])
+
   return {
     tabs: state.tabs,
     activeTabId: state.activeTabId,
@@ -246,6 +266,7 @@ export function useEditor() {
     updateTabContent,
     markTabSaved,
     getActiveTab,
+    newFile,
   }
 }
 

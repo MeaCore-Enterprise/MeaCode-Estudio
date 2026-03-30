@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import { Editor, type OnMount, type Monaco } from '@monaco-editor/react'
 import { getLspCompletions, getLspHover, getLspDiagnostics, saveFile, explainCodeWithAI, fixErrorWithAI, refactorCodeWithAI, parseAIError } from '../ipc/bridge'
+import { loadAISettings, isAIConfigured } from '../utils/aiSettings'
 import { showToast } from '../utils/toast'
 import { TabBar, type Tab } from '../components/TabBar'
 import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu'
@@ -14,6 +15,9 @@ export type MainEditorProps = {
   onTabClose: (tabId: string) => void
   onContentChange: (tabId: string, content: string) => void
   onTabSaved?: (tabId: string) => void
+  onOpenFolder?: () => void | Promise<void>
+  onOpenFile?: () => void | Promise<void>
+  onNewFile?: () => void
 }
 
 const diagnosticsUpdaters = new Map<string, ((code: string) => void)>()
@@ -165,6 +169,9 @@ export const MainEditor: React.FC<MainEditorProps> = ({
   onTabClose,
   onContentChange,
   onTabSaved,
+  onOpenFolder,
+  onOpenFile,
+  onNewFile,
 }) => {
   const { settings } = useSettings()
   const editorRef = useRef<{ [key: string]: any }>({})
@@ -191,10 +198,6 @@ export const MainEditor: React.FC<MainEditorProps> = ({
     }
   }, [settings.fontSize, settings.tabSize, settings.wordWrap, settings.minimap, activeTabId])
   
-  const getApiKey = () => {
-    return localStorage.getItem('nexusify-api-key') || ''
-  }
-
   const handleContextMenu = useCallback((e: { x: number; y: number; code: string; range: any }) => {
     setSelectedCode({ code: e.code, range: e.range })
     setContextMenu({ visible: true, x: e.x, y: e.y })
@@ -202,14 +205,14 @@ export const MainEditor: React.FC<MainEditorProps> = ({
 
   const handleExplainCode = useCallback(async () => {
     if (!selectedCode || !activeTab) return
-    const apiKey = getApiKey()
-    if (!apiKey) {
-      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
+    const ai = loadAISettings()
+    if (!isAIConfigured(ai)) {
+      showToast('Configura el proveedor de IA en el panel AI Chat (⚙)', 'warning')
       return
     }
 
     try {
-      const explanation = await explainCodeWithAI(apiKey, selectedCode.code, activeTab.language)
+      const explanation = await explainCodeWithAI(selectedCode.code, activeTab.language, ai)
       // TODO: Mostrar explicación en un panel o modal
       console.log('Explanation:', explanation)
       showToast('Explicación generada. Revisa la consola.', 'success')
@@ -223,9 +226,9 @@ export const MainEditor: React.FC<MainEditorProps> = ({
 
   const handleFixError = useCallback(async () => {
     if (!selectedCode || !activeTab) return
-    const apiKey = getApiKey()
-    if (!apiKey) {
-      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
+    const ai = loadAISettings()
+    if (!isAIConfigured(ai)) {
+      showToast('Configura el proveedor de IA en el panel AI Chat (⚙)', 'warning')
       return
     }
 
@@ -234,7 +237,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
     const error = diags.find(d => d.severity === 1)?.message || 'Error desconocido'
 
     try {
-      const fixedCode = await fixErrorWithAI(apiKey, selectedCode.code, error, activeTab.language)
+      const fixedCode = await fixErrorWithAI(selectedCode.code, error, activeTab.language, ai)
       // Replace selected code with fixed version
       if (activeTabId && editorRef.current[activeTabId]) {
         const editor = editorRef.current[activeTabId]
@@ -260,14 +263,14 @@ export const MainEditor: React.FC<MainEditorProps> = ({
 
   const handleRefactor = useCallback(async () => {
     if (!selectedCode || !activeTab) return
-    const apiKey = getApiKey()
-    if (!apiKey) {
-      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
+    const ai = loadAISettings()
+    if (!isAIConfigured(ai)) {
+      showToast('Configura el proveedor de IA en el panel AI Chat (⚙)', 'warning')
       return
     }
 
     try {
-      const refactoredCode = await refactorCodeWithAI(apiKey, selectedCode.code, activeTab.language)
+      const refactoredCode = await refactorCodeWithAI(selectedCode.code, activeTab.language, ai)
       // Replace selected code with refactored version
       if (activeTabId && editorRef.current[activeTabId]) {
         const editor = editorRef.current[activeTabId]
@@ -293,8 +296,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
   const contextMenuItems: ContextMenuItem[] = useMemo(() => {
     if (!selectedCode) return []
     
-    const apiKey = getApiKey()
-    const hasApiKey = !!apiKey
+    const hasAi = isAIConfigured(loadAISettings())
 
     return [
       {
@@ -306,7 +308,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
           </svg>
         ),
         action: handleExplainCode,
-        disabled: !hasApiKey,
+        disabled: !hasAi,
       },
       {
         id: 'fix',
@@ -317,7 +319,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
           </svg>
         ),
         action: handleFixError,
-        disabled: !hasApiKey,
+        disabled: !hasAi,
       },
       {
         id: 'refactor',
@@ -328,13 +330,13 @@ export const MainEditor: React.FC<MainEditorProps> = ({
           </svg>
         ),
         action: handleRefactor,
-        disabled: !hasApiKey,
+        disabled: !hasAi,
       },
     ]
   }, [selectedCode, handleExplainCode, handleFixError, handleRefactor])
 
   const handleSave = useCallback(async (tab: Tab) => {
-    if (!tab.path || tab.path === 'untitled') {
+    if (!tab.path || tab.path === 'untitled' || tab.path.startsWith('untitled-')) {
       // TODO: Implementar "Save As" dialog
       return
     }
@@ -359,7 +361,7 @@ export const MainEditor: React.FC<MainEditorProps> = ({
 
     // Auto-save según settings (evita guardados innecesarios).
     const tab = tabs.find((t) => t.id === tabId)
-    if (!tab || !tab.path || tab.path === 'untitled') return
+    if (!tab || !tab.path || tab.path === 'untitled' || tab.path.startsWith('untitled-')) return
 
     if (!settings.autoSave) {
       if (saveTimeoutRef.current[tabId]) {
@@ -408,56 +410,57 @@ export const MainEditor: React.FC<MainEditorProps> = ({
 
   if (tabs.length === 0) {
     return (
-      <div className="h-full w-full flex flex-col bg-neutral-950">
+      <div className="h-full w-full flex flex-col bg-[#0a0a0a]">
         <div className="h-8 flex items-center border-b border-neutral-800 bg-neutral-900/70 px-3 text-xs text-neutral-400">
-          <span>No hay archivos abiertos</span>
+          <span>Editor — sin archivos abiertos</span>
         </div>
-        <div className="flex-1 flex items-center justify-center text-neutral-400">
-          <div className="text-center max-w-md">
+        <div className="flex-1 flex items-center justify-center text-neutral-400 min-h-0">
+          <div className="text-center max-w-md px-4">
             <div className="mb-6">
-              <div className="text-4xl font-bold text-red-400 mb-2">MeaCode Studio</div>
-              <div className="text-sm text-neutral-500">IA-first IDE</div>
+              <div className="text-3xl font-bold text-red-500/95 mb-1 tracking-tight">MeaCode Studio</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-neutral-600">Editor de código</div>
             </div>
-            <div className="space-y-3">
+            <p className="text-[11px] text-neutral-500 mb-5 leading-relaxed">
+              Abre una carpeta o un archivo, o crea un archivo nuevo. El editor usa Monaco con tu tema oscuro y acentos rojos.
+            </p>
+            <div className="space-y-2">
               <button
-                onClick={() => {
-                  // TODO: Implementar open folder
-                  console.log('Open Folder')
-                }}
-                className="w-full px-4 py-2 rounded-md bg-red-600/20 text-red-400 hover:bg-red-600/30 border border-red-500/40 text-sm transition-colors"
+                type="button"
+                onClick={() => void onOpenFolder?.()}
+                className="w-full px-4 py-2.5 rounded-md bg-red-600/15 text-red-400 hover:bg-red-600/25 border border-red-500/35 text-sm transition-colors"
               >
-                <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 inline mr-2 align-text-bottom" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                 </svg>
-                Open Folder
+                Abrir carpeta
               </button>
               <button
-                onClick={() => {
-                  // TODO: Implementar open file
-                  console.log('Open File')
-                }}
-                className="w-full px-4 py-2 rounded-md bg-neutral-800/50 text-neutral-300 hover:bg-neutral-800 border border-neutral-700 text-sm transition-colors"
+                type="button"
+                onClick={() => void onOpenFile?.()}
+                className="w-full px-4 py-2.5 rounded-md bg-neutral-900/80 text-neutral-200 hover:bg-neutral-800 border border-neutral-700 text-sm transition-colors"
               >
-                <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 inline mr-2 align-text-bottom" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Open File
+                Abrir archivo
               </button>
               <button
-                onClick={() => {
-                  // TODO: Implementar new file
-                  console.log('New File')
-                }}
-                className="w-full px-4 py-2 rounded-md bg-neutral-800/50 text-neutral-300 hover:bg-neutral-800 border border-neutral-700 text-sm transition-colors"
+                type="button"
+                onClick={() => onNewFile?.()}
+                className="w-full px-4 py-2.5 rounded-md bg-neutral-900/80 text-neutral-200 hover:bg-neutral-800 border border-neutral-700 text-sm transition-colors"
               >
-                <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 inline mr-2 align-text-bottom" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                New File
+                Archivo nuevo
               </button>
             </div>
-            <div className="mt-6 text-xs text-neutral-600">
-              <p>O usa <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700">Ctrl+P</kbd> para búsqueda rápida</p>
+            <div className="mt-6 text-[10px] text-neutral-600">
+              <p>
+                <kbd className="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-700">Ctrl+P</kbd>{' '}
+                búsqueda rápida ·{' '}
+                <kbd className="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-700">Ctrl+S</kbd> guardar
+              </p>
             </div>
           </div>
         </div>
@@ -497,12 +500,29 @@ export const MainEditor: React.FC<MainEditorProps> = ({
             )}
       </div>
           
-      <div className="flex-1 monaco-editor-container">
+      <div className="flex-1 monaco-editor-container min-h-0 bg-[#0a0a0a]">
         <Editor
               key={activeTab.id}
           height="100%"
               language={activeTab.language || 'plaintext'}
-          theme={settings.theme === 'dark' ? 'vs-dark' : 'vs'}
+          theme={settings.theme === 'dark' ? 'meacode-dark' : 'vs'}
+          beforeMount={(monaco) => {
+            monaco.editor.defineTheme('meacode-dark', {
+              base: 'vs-dark',
+              inherit: true,
+              rules: [],
+              colors: {
+                'editor.background': '#0a0a0a',
+                'editorGutter.background': '#0a0a0a',
+                'editorLineNumber.foreground': '#525252',
+                'editorLineNumber.activeForeground': '#a3a3a3',
+                'editorCursor.foreground': '#ef4444',
+                'editor.lineHighlightBackground': '#171717',
+                'editor.selectionBackground': '#7f1d1d66',
+                'minimap.background': '#0a0a0a',
+              },
+            })
+          }}
               onMount={(editor, monaco) => {
                 const mountHandler = handleEditorDidMount(activeTab.id, activeTab.language || 'plaintext', handleContextMenu)
                 mountHandler(editor, monaco)

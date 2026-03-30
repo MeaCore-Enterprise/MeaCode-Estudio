@@ -47,6 +47,7 @@ export const IdeLayout: React.FC = () => {
     setActiveTab,
     updateTabContent,
     markTabSaved,
+    newFile,
   } = useEditor()
   
   // Load session state from localStorage
@@ -116,6 +117,14 @@ export const IdeLayout: React.FC = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+N new file
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N') && !e.shiftKey) {
+        e.preventDefault()
+        newFile()
+        setShowWelcome(false)
+        return
+      }
+
       // Ctrl+P for Quick Open
       if ((e.ctrlKey || e.metaKey) && e.key === 'p' && !e.shiftKey) {
         e.preventDefault()
@@ -140,7 +149,7 @@ export const IdeLayout: React.FC = () => {
     
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [newFile])
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -314,7 +323,8 @@ export const IdeLayout: React.FC = () => {
       label: 'New File',
       category: 'File',
       action: () => {
-        showToast('Nueva funcionalidad: Crear archivo (próximamente)', 'info')
+        newFile()
+        setShowWelcome(false)
       },
       shortcut: 'Ctrl+N',
     },
@@ -452,7 +462,15 @@ export const IdeLayout: React.FC = () => {
               {activeMenu === 'file' && (
                 <div className="absolute left-0 top-8 w-56 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg z-50 py-1"
                      onClick={(e) => e.stopPropagation()}>
-                  <button className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      newFile()
+                      setShowWelcome(false)
+                      setActiveMenu(null)
+                    }}
+                    className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 flex items-center gap-2"
+                  >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
@@ -997,6 +1015,12 @@ export const IdeLayout: React.FC = () => {
                     onTabClose={closeTab}
                     onContentChange={handleContentChange}
                     onTabSaved={handleTabSaved}
+                    onOpenFolder={handleOpenFolder}
+                    onOpenFile={handleOpenFileMenu}
+                    onNewFile={() => {
+                      newFile()
+                      setShowWelcome(false)
+                    }}
                   />
                 </section>
                 {showAiChat && featureFlags.aiChat && (

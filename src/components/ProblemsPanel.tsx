@@ -1,5 +1,6 @@
 import React from 'react'
 import { explainCodeWithAI, fixErrorWithAI, parseAIError } from '../ipc/bridge'
+import { loadAISettings, isAIConfigured } from '../utils/aiSettings'
 import { showToast } from '../utils/toast'
 
 export type Problem = {
@@ -27,14 +28,10 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = ({
   onExplainWithAI,
   onFixWithAI,
 }) => {
-  const getApiKey = () => {
-    return localStorage.getItem('nexusify-api-key') || ''
-  }
-
   const handleExplain = async (problem: Problem) => {
-    const apiKey = getApiKey()
-    if (!apiKey) {
-      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
+    const ai = loadAISettings()
+    if (!isAIConfigured(ai)) {
+      showToast('Configura el proveedor de IA en el panel AI Chat', 'warning')
       return
     }
 
@@ -45,7 +42,7 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = ({
 
     try {
       const code = problem.code || fileContent || ''
-      const explanation = await explainCodeWithAI(apiKey, code, language)
+      const explanation = await explainCodeWithAI(code, language, ai)
       showToast('Explicación generada. Revisa la consola.', 'success')
       console.log('Explanation:', explanation)
       alert(explanation) // Temporal - debería mostrarse en un panel
@@ -57,9 +54,9 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = ({
   }
 
   const handleFix = async (problem: Problem) => {
-    const apiKey = getApiKey()
-    if (!apiKey) {
-      showToast('Por favor configura tu API key de Nexusify en el panel de IA', 'warning')
+    const ai = loadAISettings()
+    if (!isAIConfigured(ai)) {
+      showToast('Configura el proveedor de IA en el panel AI Chat', 'warning')
       return
     }
 
@@ -70,7 +67,7 @@ export const ProblemsPanel: React.FC<ProblemsPanelProps> = ({
 
     try {
       const code = problem.code || fileContent || ''
-      const fixedCode = await fixErrorWithAI(apiKey, code, problem.message, language)
+      const fixedCode = await fixErrorWithAI(code, problem.message, language, ai)
       // TODO: Aplicar el código corregido
       console.log('Fixed code:', fixedCode)
       showToast('Código corregido. Revisa la consola.', 'success')
