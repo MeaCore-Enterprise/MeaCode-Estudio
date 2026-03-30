@@ -1,19 +1,19 @@
 # Build y release al pushear un tag de versión.
 #
 # Flujo recomendado:
-#   1. Iguala la versión en package.json y src-tauri/Cargo.toml (mismo semver, ej. 1.0.0).
-#   2. Commit y crea tag (cualquiera de los dos formatos):
+#   1. Asegúrate de que package.json, src-tauri/Cargo.toml y
+#      src-tauri/tauri.conf.json tienen la misma versión semver.
+#   2. Crea y pushea el tag:
 #        git tag v1.0.0 && git push origin v1.0.0
-#        git tag 1.0.0  && git push origin 1.0.0
-#   3. El job valida que el tag (sin prefijo "v") coincida con esas versiones.
+#   3. El workflow valida versiones, compila, firma (si hay claves) y crea el release.
 #
-# Patrones de tag:
-#   - v*     → v1.0.0, v2.3.4-rc.1, etc.
-#   - *.*.*  → 1.0.0, 0.2.15 (semver X.Y.Z sin prefijo v)
+# Secrets opcionales para firmar y activar el auto-updater:
+#   - TAURI_SIGNING_PRIVATE_KEY          → clave privada en base64
+#   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD → contraseña de la clave
 #
-# workflow_dispatch: útil para re-ejecutar un workflow ya asociado a un tag
-# desde la pestaña Actions; no sustituye crear y pushear el tag.
-name: Build and Release
+# Sin esos secrets el build funciona pero el auto-updater no estará disponible.
+
+name: Build and Release — Windows
 
 on:
   push:
@@ -21,56 +21,69 @@ on:
       - 'v*'
       - '*.*.*'
   workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Crear como borrador (draft)'
+        type: boolean
+        default: true
+      prerelease:
+        description: 'Marcar como pre-release'
+        type: boolean
+        default: false
 
-# Control de concurrencia: evita builds duplicados si se pushean tags rápido
-# Para releases, sí cancelamos builds anteriores del mismo tag
+# En releases NO cancelamos: un release a medias sería peor que dejarlo terminar.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  build:
+  release-windows:
+    name: Release — Windows x64
+    runs-on: windows-latest
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary_ext: .exe
-            bundle_pattern: "**/*.exe"
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            binary_ext: ""
-            bundle_pattern: "**/*.AppImage"
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            binary_ext: ""
-            bundle_pattern: "**/*.dmg"
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            binary_ext: ""
-            bundle_pattern: "**/*.dmg"
 
-    runs-on: ${{ matrix.os }}
     steps:
+      # ─── 1. CHECKOUT ────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ─── 2. EXTRAER VERSIÓN DEL TAG ─────────────────────────────────────────
       - name: Extract version from tag
         id: version
-        shell: bash
+        shell: pwsh
         run: |
-          TAG_NAME="${{ github.ref_name }}"
-          VERSION="${TAG_NAME#v}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "Extracted version: $VERSION from tag: $TAG_NAME"
+          $tag     = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          Write-Host "Tag: $tag  →  Version: $version"
+          "tag=$tag"     >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
 
+      # ─── 3. VALIDAR VERSIONES ───────────────────────────────────────────────
       - name: Validate version consistency
-        shell: bash
+        shell: pwsh
         run: |
+          $cargoRaw  = Get-Content src-tauri/Cargo.toml -Raw
+          $pkgRaw    = Get-Content package.json -Raw
+          $tauriRaw  = Get-Content src-tauri/tauri.conf.json -Raw
+
+          $cargoVer  = [regex]::Match($cargoRaw,  '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          $pkgVer    = ($pkgRaw  | ConvertFrom-Json).version
+          $tauriVer  = ($tauriRaw | ConvertFrom-Json).package.version
+          $tagVer    = "${{ steps.version.outputs.version }}"
+
+          Write-Host "Cargo.toml:       $cargoVer"
+          Write-Host "package.json:     $pkgVer"
+          Write-Host "tauri.conf.json:  $tauriVer"
+          Write-Host "Tag:              $tagVer"
+
+          $errors = 0
+          if ($cargoVer -ne $pkgVer)   { Write-Error "Mismatch: Cargo ($cargoVer) != package.json ($pkgVer)"; $errors++ }
+          if ($cargoVer -ne $tauriVer) { Write-Error "Mismatch: Cargo ($cargoVer) != tauri.conf.json ($tauriVer)"; $errors++ }
+          if ($cargoVer -ne $tagVer)   { Write-Error "Mismatch: Cargo ($cargoVer) != tag ($tagVer)"; $errors++ }
+
+          if ($errors -gt 0) { exit 1 }
+          Write-Host "✅ All versions match: $cargoVer"
           CARGO_VERSION=$(grep -E '^version\s*=' src-tauri/Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
           PACKAGE_VERSION=$(grep -E '"version"' package.json | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
           TAURI_CONF_VERSION=$(grep -E '"version"' src-tauri/tauri.conf.json | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
@@ -104,245 +117,201 @@ jobs:
           
           echo "✅ All versions match: $CARGO_VERSION"
 
-      - name: Setup Node.js
+      # ─── 4. TOOLCHAIN — NODE + PNPM ─────────────────────────────────────────
+      - name: Setup Node.js 20 LTS
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
           version: 9
-          run_install: false
 
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
+      - name: Cache pnpm store
         uses: actions/cache@v4
         with:
-          path: ${{ steps.pnpm-cache.outputs.path }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          path: ${{ env.PNPM_HOME }}\store
+          key: windows-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-
+            windows-pnpm-
 
-      - name: Install Rust
+      # ─── 5. TOOLCHAIN — RUST ────────────────────────────────────────────────
+      - name: Setup Rust stable (x86_64-pc-windows-msvc)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: x86_64-pc-windows-msvc
 
-      # Cache de Cargo: reduce builds de minutos a segundos
-      - name: Cache cargo
+      - name: Cache Cargo registry + build artifacts
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ~\.cargo\registry
+            ~\.cargo\git
+            src-tauri\target
+          key: windows-cargo-release-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            windows-cargo-release-
+            windows-cargo-
 
-      - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-22.04'
+      # ─── 6. VERIFICAR ACTIVOS NECESARIOS ────────────────────────────────────
+      - name: Verify required Windows icons
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            libsoup2.4-dev \
-            pkg-config \
-            patchelf
+          $icons = @(
+            "src-tauri/icons/icon.ico",
+            "src-tauri/icons/32x32.png",
+            "src-tauri/icons/128x128.png"
+          )
+          foreach ($icon in $icons) {
+            if (Test-Path $icon) { Write-Host "✓ $icon" }
+            else { Write-Error "✗ Missing: $icon"; exit 1 }
+          }
 
-      - name: Verify Tauri icons exist
-        shell: bash
+      # ─── 7. COMPROBAR CLAVES DE FIRMA ───────────────────────────────────────
+      - name: Check signing keys availability
+        id: signing
+        shell: pwsh
         run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            if [ ! -f "src-tauri/icons/icon.ico" ]; then
-              echo "ERROR: icon.ico not found at src-tauri/icons/icon.ico"
-              exit 1
-            fi
-            echo "✓ icon.ico found"
-          elif [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
-            if [ ! -f "src-tauri/icons/icon.png" ]; then
-              echo "ERROR: icon.png not found at src-tauri/icons/icon.png"
-              exit 1
-            fi
-            echo "✓ icon.png found"
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            if [ ! -f "src-tauri/icons/icon.icns" ]; then
-              echo "ERROR: icon.icns not found at src-tauri/icons/icon.icns"
-              exit 1
-            fi
-            echo "✓ icon.icns found"
-          fi
+          $hasKey  = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" -ne ""
+          $hasPwd  = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" -ne ""
+          $canSign = $hasKey -and $hasPwd
 
+          if ($canSign) {
+            Write-Host "✅ Signing keys present — build will be signed and auto-updater will work."
+            "enabled=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "⚠️  Signing keys missing — build will work but auto-updater will NOT be available."
+            Write-Host "    TAURI_SIGNING_PRIVATE_KEY:          $(if ($hasKey) { 'present' } else { 'MISSING' })"
+            Write-Host "    TAURI_SIGNING_PRIVATE_KEY_PASSWORD: $(if ($hasPwd) { 'present' } else { 'MISSING' })"
+            "enabled=false" >> $env:GITHUB_OUTPUT
+          }
+
+      # ─── 8. FRONTEND ────────────────────────────────────────────────────────
       - name: Install frontend dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build frontend
         run: pnpm build
 
-      - name: Check signing keys availability
-        id: check_keys
-        shell: bash
-        run: |
-          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ] && [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" ]; then
-            echo "has_keys=true" >> $GITHUB_OUTPUT
-            echo "✅ Signing keys found - builds will be signed and updater will work"
-          else
-            echo "has_keys=false" >> $GITHUB_OUTPUT
-            echo "⚠️ WARNING: Signing keys not found!"
-            echo "  - TAURI_SIGNING_PRIVATE_KEY: $([ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ] && echo 'present' || echo 'missing')"
-            echo "  - TAURI_SIGNING_PRIVATE_KEY_PASSWORD: $([ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" ] && echo 'present' || echo 'missing')"
-            echo ""
-            echo "⚠️ Build will continue WITHOUT signing:"
-            echo "  - Binaries will be built successfully"
-            echo "  - Auto-updater will NOT work (requires signed binaries)"
-            echo "  - Manual installation will work fine"
-            echo ""
-            echo "See .github/docs/signing-guide.md for instructions on setting up signing keys."
-          fi
-
-      - name: Prepare signing environment
-        id: signing_env
-        if: steps.check_keys.outputs.has_keys == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          echo "PRIVATE_KEY=${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" >> $GITHUB_ENV
-          echo "PRIVATE_KEY_PASSWORD=${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" >> $GITHUB_ENV
-          echo "USE_SIGNING=true" >> $GITHUB_ENV
-
-      - name: Build Tauri app
-        id: build_tauri
+      # ─── 9. BUILD TAURI + CREAR RELEASE ─────────────────────────────────────
+      - name: Build Tauri app and publish release
+        id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ env.PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.PRIVATE_KEY_PASSWORD }}
-          TAURI_PRIVATE_KEY: ${{ env.PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: .
-          args: --target ${{ matrix.target }}
-          updaterJsonPreferNsis: ${{ env.USE_SIGNING == 'true' }}
-          tagName: ${{ github.ref_name }}
-          releaseName: 'MeaCode Studio ${{ github.ref_name }}'
+          args: --target x86_64-pc-windows-msvc
+          tagName: ${{ steps.version.outputs.tag }}
+          releaseName: 'MeaCode Studio ${{ steps.version.outputs.tag }}'
           releaseBody: |
-            ## MeaCode Studio ${{ github.ref_name }}
-            ${{ env.USE_SIGNING != 'true' && '### ⚠️ Unsigned Build' || '' }}
-            ${{ env.USE_SIGNING != 'true' && 'This build was created without signing keys. Auto-updater will not work. Manual installation works fine.' || '' }}
+            ## MeaCode Studio ${{ steps.version.outputs.tag }}
 
-            ### ✨ Características principales
-            - 🚀 IDE IA-first con acciones contextuales
+            ${{ steps.signing.outputs.enabled != 'true' && '> ⚠️ **Unsigned build** — el auto-updater no está disponible en esta versión. La instalación manual funciona correctamente.' || '' }}
+
+            ### ✨ Características
+            - 🚀 IDE IA-first con acciones contextuales sobre código
             - 💬 Chat IA integrado (Nexusify API)
-            - 📝 Editor con Monaco y LSP
+            - 📝 Editor Monaco con soporte LSP
             - 🖥️ Terminal integrada (xterm.js)
-            - 📁 Explorer de archivos
-            - 🔍 Búsqueda rápida (Ctrl+P)
-            - ⌨️ Command Palette (Ctrl+Shift+P)
-            - 💾 Persistencia de sesión
+            - 📁 Explorador de archivos
+            - 🔍 Búsqueda rápida (`Ctrl+P`)
+            - ⌨️ Command Palette (`Ctrl+Shift+P`)
+            - 💾 Persistencia de sesión entre reinicios
 
             ### 🎯 Acciones IA sobre código
-            - **Explain this**: Explica código seleccionado
-            - **Fix error**: Corrige errores automáticamente
-            - **Refactor**: Refactoriza código manteniendo funcionalidad
+            - **Explain this** — explica el código seleccionado
+            - **Fix error** — corrige errores automáticamente
+            - **Refactor** — mejora el código manteniendo su funcionalidad
 
-            ### 📦 Instalación
-            Descarga el instalador para tu plataforma y ejecútalo.
+            ### 📦 Instalación Windows
+            Descarga el archivo `.exe` (instalador NSIS) o `.msi` y ejecútalo.
+            Windows puede mostrar una advertencia SmartScreen — haz clic en **"Más información → Ejecutar de todas formas"**.
 
-            Más información en el [README.md](README.md)
-          releaseDraft: true
-          prerelease: false
+            Más información en el [README](https://github.com/${{ github.repository }}/blob/main/README.md).
+          releaseDraft: ${{ github.event.inputs.draft != 'false' }}
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
 
-      - name: Verify binaries exist
-        if: success()
-        shell: bash
+      # ─── 10. VERIFICAR BINARIO Y REPORTAR TAMAÑO ────────────────────────────
+      - name: Verify binary and report artifact sizes
+        shell: pwsh
         run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            if [ -f "src-tauri/target/${{ matrix.target }}/release/meacode-studio.exe" ]; then
-              echo "✅ Binary found: meacode-studio.exe"
-              ls -lh "src-tauri/target/${{ matrix.target }}/release/meacode-studio.exe"
-            else
-              echo "❌ ERROR: Binary not found!"
-              find src-tauri/target/${{ matrix.target }}/release -name "*.exe" -o -name "*.msi" -o -name "*.nsis.zip" || true
-              exit 1
-            fi
-          elif [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
-            if [ -f "src-tauri/target/${{ matrix.target }}/release/meacode-studio" ]; then
-              echo "✅ Binary found: meacode-studio"
-              ls -lh "src-tauri/target/${{ matrix.target }}/release/meacode-studio"
-            else
-              echo "❌ ERROR: Binary not found!"
-              find src-tauri/target/${{ matrix.target }}/release -name "meacode-studio" -o -name "*.AppImage" -o -name "*.deb" || true
-              exit 1
-            fi
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle/macos/MeaCode Studio.app" ]; then
-              echo "✅ Binary found: MeaCode Studio.app"
-              ls -lh "src-tauri/target/${{ matrix.target }}/release/bundle/macos/MeaCode Studio.app"
-            else
-              echo "❌ ERROR: Binary not found!"
-              find src-tauri/target/${{ matrix.target }}/release/bundle -name "*.app" -o -name "*.dmg" || true
-              exit 1
-            fi
-          fi
+          $binaryPath = "src-tauri\target\x86_64-pc-windows-msvc\release\meacode-studio.exe"
+          if (Test-Path $binaryPath) {
+            $sizeMB = [math]::Round((Get-Item $binaryPath).Length / 1MB, 2)
+            Write-Host "✅ meacode-studio.exe  ($sizeMB MB)"
+          } else {
+            Write-Error "❌ Binary not found: $binaryPath"
+            exit 1
+          }
 
-      - name: Generate checksums
-        if: success()
-        shell: bash
+          $bundleDir = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
+          if (Test-Path $bundleDir) {
+            Write-Host ""
+            Write-Host "Bundle artifacts:"
+            Get-ChildItem $bundleDir -Recurse -File | ForEach-Object {
+              $sizeMB = [math]::Round($_.Length / 1MB, 2)
+              Write-Host "  $($_.Name)  ($sizeMB MB)"
+            }
+          }
+
+      # ─── 11. GENERAR CHECKSUMS SHA-256 ──────────────────────────────────────
+      - name: Generate SHA-256 checksums
+        shell: pwsh
         run: |
-          mkdir -p checksums
-          
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            find src-tauri/target/${{ matrix.target }}/release/bundle -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.zip" \) | while read file; do
-              filename=$(basename "$file")
-              if command -v sha256sum >/dev/null 2>&1; then
-                sha256sum "$file" > "checksums/${filename}.sha256"
-              elif command -v shasum >/dev/null 2>&1; then
-                shasum -a 256 "$file" > "checksums/${filename}.sha256"
-              fi
-              echo "Generated checksum for: $filename"
-            done
-          elif [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
-            find src-tauri/target/${{ matrix.target }}/release/bundle -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.tar.gz" \) | while read file; do
-              filename=$(basename "$file")
-              sha256sum "$file" > "checksums/${filename}.sha256"
-              echo "Generated checksum for: $filename"
-            done
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            find src-tauri/target/${{ matrix.target }}/release/bundle -type f \( -name "*.dmg" -o -name "*.app.tar.gz" \) | while read file; do
-              filename=$(basename "$file")
-              shasum -a 256 "$file" > "checksums/${filename}.sha256"
-              echo "Generated checksum for: $filename"
-            done
-          fi
-          
-          if [ -d checksums ] && [ "$(ls -A checksums 2>/dev/null)" ]; then
-            echo "✅ Checksums generated:"
-            ls -lh checksums/
-          else
-            echo "⚠️ No checksums generated (no bundle files found)"
-          fi
+          $bundleDir = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
+          $outDir    = "checksums"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-      - name: Upload checksums
+          $extensions = @("*.exe", "*.msi", "*.zip", "*.nsis.zip")
+          $files = Get-ChildItem $bundleDir -Recurse -Include $extensions -File
+
+          if ($files.Count -eq 0) {
+            Write-Host "⚠️  No bundle files found for checksums."
+          } else {
+            $allChecksums = @()
+            foreach ($file in $files) {
+              $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
+              $line = "$hash  $($file.Name)"
+              $allChecksums += $line
+              Write-Host "  $line"
+            }
+            $allChecksums | Set-Content "$outDir\checksums-windows-x64.sha256"
+            Write-Host ""
+            Write-Host "✅ Checksums written to $outDir\checksums-windows-x64.sha256"
+          }
+
+      # ─── 12. SUBIR ARTEFACTOS ───────────────────────────────────────────────
+      - name: Upload Windows installers as artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeaCode-Studio-${{ steps.version.outputs.version }}-windows-x64
+          path: |
+            src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\*.exe
+            src-tauri\target\x86_64-pc-windows-msvc\release\bundle\msi\*.msi
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Upload checksums as artifact
         if: success() && hashFiles('checksums/**') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: checksums-${{ matrix.os }}-${{ matrix.target }}
-          path: checksums/
+          name: checksums-${{ steps.version.outputs.version }}-windows-x64
+          path: checksums\
           retention-days: 90
 
+      # ─── 13. LOGS EN CASO DE FALLO ──────────────────────────────────────────
       - name: Upload build logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs-${{ matrix.os }}-${{ matrix.target }}
+          name: build-logs-release-windows-${{ github.run_number }}
           path: |
-            src-tauri/target/**/*.log
-            src-tauri/target/**/build.log
-          retention-days: 7
+            src-tauri\target\**\*.log
+            src-tauri\target\**\build.log
+          retention-days: 14
           if-no-files-found: ignore

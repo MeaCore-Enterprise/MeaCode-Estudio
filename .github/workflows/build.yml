@@ -1,5 +1,8 @@
 name: Build (PR Check)
 
+# Se ejecuta en PRs y pushes a ramas principales (no en tags de release).
+# Solo compila para Windows. Linux se añadirá en el futuro.
+
 on:
   pull_request:
     branches: [main, master, develop]
@@ -7,192 +10,160 @@ on:
     branches: [main, master, develop]
     tags-ignore:
       - 'v*'
+      - '*.*.*'
 
-# Control de concurrencia para PRs
-# Solo cancela builds anteriores del mismo branch/PR, pero permite builds del mismo commit
+# Cancela el build anterior del mismo PR/branch si llega uno nuevo.
+# Así no se acumulan builds en cola mientras trabajas.
 concurrency:
   group: build-${{ github.ref }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  build-check:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-          - os: macos-latest
-            target: x86_64-apple-darwin
+  build-windows:
+    name: Build — Windows x64
+    runs-on: windows-latest
+    permissions:
+      contents: read
 
-    runs-on: ${{ matrix.os }}
     steps:
+      # ─── 1. CHECKOUT ────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ─── 2. VALIDAR VERSIONES ───────────────────────────────────────────────
+      # Comprueba que package.json, Cargo.toml y tauri.conf.json tienen el mismo semver.
+      # Usa node --eval para evitar sed/grep frágiles.
       - name: Validate version consistency
-        shell: bash
+        shell: pwsh
         run: |
-          CARGO_VERSION=$(grep -E '^version\s*=' src-tauri/Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
-          PACKAGE_VERSION=$(grep -E '"version"' package.json | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
-          
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "package.json version: $PACKAGE_VERSION"
-          
-          if [ "$CARGO_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "❌ ERROR: Version mismatch!"
-            echo "  Cargo.toml: $CARGO_VERSION"
-            echo "  package.json: $PACKAGE_VERSION"
-            exit 1
-          fi
-          
-          echo "✅ Versions match: $CARGO_VERSION"
+          $cargoRaw  = Get-Content src-tauri/Cargo.toml -Raw
+          $pkgRaw    = Get-Content package.json -Raw
+          $tauriRaw  = Get-Content src-tauri/tauri.conf.json -Raw
 
-      - name: Setup Node.js
+          $cargoVer  = [regex]::Match($cargoRaw,  '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          $pkgVer    = ($pkgRaw  | ConvertFrom-Json).version
+          $tauriVer  = ($tauriRaw | ConvertFrom-Json).package.version
+
+          Write-Host "Cargo.toml:       $cargoVer"
+          Write-Host "package.json:     $pkgVer"
+          Write-Host "tauri.conf.json:  $tauriVer"
+
+          if ($cargoVer -ne $pkgVer) {
+            Write-Error "Version mismatch: Cargo.toml ($cargoVer) != package.json ($pkgVer)"
+            exit 1
+          }
+          if ($cargoVer -ne $tauriVer) {
+            Write-Error "Version mismatch: Cargo.toml ($cargoVer) != tauri.conf.json ($tauriVer)"
+            exit 1
+          }
+          Write-Host "✅ All versions match: $cargoVer"
+
+      # ─── 3. TOOLCHAIN — NODE + PNPM ─────────────────────────────────────────
+      - name: Setup Node.js 20 LTS
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
           version: 9
-          run_install: false
 
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
+      - name: Cache pnpm store
         uses: actions/cache@v4
         with:
-          path: ${{ steps.pnpm-cache.outputs.path }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          path: ${{ env.PNPM_HOME }}\store
+          key: windows-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-
+            windows-pnpm-
 
-      - name: Install Rust
+      # ─── 4. TOOLCHAIN — RUST ────────────────────────────────────────────────
+      - name: Setup Rust stable (x86_64-pc-windows-msvc)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: x86_64-pc-windows-msvc
 
-      # Cache de Cargo también en PRs
-      - name: Cache cargo
+      - name: Cache Cargo registry + build artifacts
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ~\.cargo\registry
+            ~\.cargo\git
+            src-tauri\target
+          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            windows-cargo-
 
-      - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-22.04'
+      # ─── 5. VERIFICAR ACTIVOS NECESARIOS ────────────────────────────────────
+      - name: Verify required Windows icons
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            libsoup2.4-dev \
-            pkg-config \
-            patchelf
+          $icons = @(
+            "src-tauri/icons/icon.ico",
+            "src-tauri/icons/32x32.png",
+            "src-tauri/icons/128x128.png"
+          )
+          $missing = $false
+          foreach ($icon in $icons) {
+            if (Test-Path $icon) {
+              Write-Host "✓ Found: $icon"
+            } else {
+              Write-Error "✗ Missing: $icon"
+              $missing = $true
+            }
+          }
+          if ($missing) { exit 1 }
 
-      - name: Verify Tauri icons exist
-        shell: bash
-        run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            if [ ! -f "src-tauri/icons/icon.ico" ]; then
-              echo "ERROR: icon.ico not found at src-tauri/icons/icon.ico"
-              ls -la src-tauri/icons/ || echo "icons directory does not exist"
-              exit 1
-            fi
-            echo "✓ icon.ico found"
-          elif [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
-            if [ ! -f "src-tauri/icons/icon.png" ]; then
-              echo "ERROR: icon.png not found at src-tauri/icons/icon.png"
-              ls -la src-tauri/icons/ || echo "icons directory does not exist"
-              exit 1
-            fi
-            echo "✓ icon.png found"
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            if [ ! -f "src-tauri/icons/icon.icns" ]; then
-              echo "ERROR: icon.icns not found at src-tauri/icons/icon.icns"
-              ls -la src-tauri/icons/ || echo "icons directory does not exist"
-              exit 1
-            fi
-            echo "✓ icon.icns found"
-          fi
-
+      # ─── 6. FRONTEND ────────────────────────────────────────────────────────
       - name: Install frontend dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build frontend
         run: pnpm build
-        continue-on-error: true
-        id: build_frontend
 
-      - name: Build Tauri app (check only)
-        id: build_tauri
+      # ─── 7. BUILD TAURI ─────────────────────────────────────────────────────
+      # En PRs compilamos sin firmar ni crear release (solo verificar que compila).
+      - name: Build Tauri app (Windows x64)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: .
-          args: --target ${{ matrix.target }}
-        continue-on-error: true
+          args: --target x86_64-pc-windows-msvc
 
-      - name: Verify binaries exist
-        if: always()
-        shell: bash
+      # ─── 8. VERIFICAR BINARIO Y REPORTAR TAMAÑO ─────────────────────────────
+      - name: Verify binary and report size
+        shell: pwsh
         run: |
-          if [ "${{ steps.build_tauri.outcome }}" != "success" ]; then
-            echo "⚠️ Build failed, skipping binary verification"
-            exit 0
-          fi
-          
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            if [ -f "src-tauri/target/${{ matrix.target }}/release/meacode-studio.exe" ]; then
-              echo "✅ Binary found: meacode-studio.exe"
-              ls -lh "src-tauri/target/${{ matrix.target }}/release/meacode-studio.exe"
-            else
-              echo "❌ ERROR: Binary not found!"
-              find src-tauri/target/${{ matrix.target }}/release -name "*.exe" -o -name "*.msi" -o -name "*.nsis.zip" || true
-              exit 1
-            fi
-          elif [ "${{ matrix.os }}" == "ubuntu-22.04" ]; then
-            if [ -f "src-tauri/target/${{ matrix.target }}/release/meacode-studio" ]; then
-              echo "✅ Binary found: meacode-studio"
-              ls -lh "src-tauri/target/${{ matrix.target }}/release/meacode-studio"
-            else
-              echo "❌ ERROR: Binary not found!"
-              find src-tauri/target/${{ matrix.target }}/release -name "meacode-studio" -o -name "*.AppImage" -o -name "*.deb" || true
-              exit 1
-            fi
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            if [ -d "src-tauri/target/${{ matrix.target }}/release/bundle/macos/MeaCode Studio.app" ]; then
-              echo "✅ Binary found: MeaCode Studio.app"
-              ls -lh "src-tauri/target/${{ matrix.target }}/release/bundle/macos/MeaCode Studio.app"
-            else
-              echo "❌ ERROR: Binary not found!"
-              find src-tauri/target/${{ matrix.target }}/release/bundle -name "*.app" -o -name "*.dmg" || true
-              exit 1
-            fi
-          fi
+          $binaryPath = "src-tauri\target\x86_64-pc-windows-msvc\release\meacode-studio.exe"
+          if (Test-Path $binaryPath) {
+            $size = (Get-Item $binaryPath).Length / 1MB
+            Write-Host "✅ Binary found: meacode-studio.exe ($([math]::Round($size, 2)) MB)"
+          } else {
+            Write-Error "❌ Binary not found at expected path: $binaryPath"
+            Write-Host "Searching for any .exe in release folder..."
+            Get-ChildItem "src-tauri\target\x86_64-pc-windows-msvc\release" -Filter "*.exe" -ErrorAction SilentlyContinue
+            exit 1
+          }
 
+          $bundleDir = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
+          if (Test-Path $bundleDir) {
+            Write-Host ""
+            Write-Host "Bundle artifacts:"
+            Get-ChildItem $bundleDir -Recurse -File | ForEach-Object {
+              $sizeMB = [math]::Round($_.Length / 1MB, 2)
+              Write-Host "  $($_.Name)  ($sizeMB MB)"
+            }
+          }
+
+      # ─── 9. ARTEFACTOS EN CASO DE FALLO ─────────────────────────────────────
       - name: Upload build logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs-${{ matrix.os }}-${{ matrix.target }}
+          name: build-logs-windows-${{ github.run_number }}
           path: |
-            src-tauri/target/**/*.log
-            src-tauri/target/**/build.log
+            src-tauri\target\**\*.log
+            src-tauri\target\**\build.log
           retention-days: 7
           if-no-files-found: ignore
