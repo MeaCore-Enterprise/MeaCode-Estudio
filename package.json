@@ -1,6 +1,6 @@
 {
   "name": "meacode-estudio",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "MeaCode Studio - AI-first desktop IDE built with Rust, Tauri and modern web technologies",
   "scripts": {
