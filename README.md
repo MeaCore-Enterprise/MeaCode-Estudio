@@ -39,6 +39,14 @@ MeaCode Studio está en desarrollo temprano. Algunas funciones son experimentale
 2. Ejecuta el instalador.
 3. Abre MeaCode Studio.
 
+### Linux (.deb / AppImage)
+- El pipeline `Linux Release` genera artefactos `.deb` y `.AppImage` en cada tag de versión.
+- Recomendado para Ubuntu/Debian: instalar el `.deb` para integración con menú de aplicaciones y centros de software.
+- Instalación manual:
+  ```bash
+  sudo apt install ./meacode-studio_<version>_amd64.deb
+  ```
+
 ### Para desarrollo
 1. Clona el repositorio:
    ```bash
@@ -79,18 +87,7 @@ MeaCode-Estudio/
 
 ## Actualizaciones automáticas
 
-El proyecto incluye sistema de actualización automática.  
-Para habilitarlo correctamente en desarrollo:
-
-1. Genera claves de firmado:
-   ```bash
-   cd src-tauri
-   pnpm tauri signer generate
-   ```
-2. Reemplaza `pubkey` en `src-tauri/tauri.conf.json` por tu clave pública.
-3. Configura secretos en GitHub:
-   - `TAURI_SIGNING_PRIVATE_KEY`
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+**Próximamente.** Se está trabajando en un mecanismo de actualización propio que no dependerá de generar ni gestionar las claves de firmado de Tauri.
 
 ## Contribución y licencia
 

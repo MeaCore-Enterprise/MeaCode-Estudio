@@ -24,14 +24,35 @@
     },
     "bundle": {
       "active": true,
+      "targets": [
+        "deb",
+        "appimage"
+      ],
       "identifier": "com.meacore.meacode-studio",
+      "category": "Development",
+      "shortDescription": "IDE de escritorio IA-first para desarrollo de software.",
+      "longDescription": "MeaCode Studio combina editor, terminal y acciones de IA para acelerar flujos de desarrollo en una sola aplicacion de escritorio.",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
         "icons/128x128@2x.png",
         "icons/icon.icns",
         "icons/icon.ico"
-      ]
+      ],
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1",
+          "libxdo3",
+          "libssl3",
+          "libglib2.0-0",
+          "libc6"
+        ],
+        "files": {
+          "/usr/share/metainfo/com.meacore.meacode-studio.metainfo.xml": "linux/com.meacore.meacode-studio.metainfo.xml"
+        }
+      }
     },
     "updater": {
       "active": true,

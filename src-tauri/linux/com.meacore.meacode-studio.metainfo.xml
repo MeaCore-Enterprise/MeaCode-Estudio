@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.meacore.meacode-studio</id>
+  <name>MeaCode Studio</name>
+  <summary>IDE de escritorio IA-first para desarrollo de software</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <developer id="com.meacore">
+    <name>MeaCore Enterprise</name>
+  </developer>
+  <description>
+    <p>MeaCode Studio es un IDE de escritorio orientado a IA con editor, terminal y acciones contextuales para acelerar el trabajo de desarrollo.</p>
+    <p>Incluye chat IA integrado, herramientas de refactorizacion y soporte para flujos modernos de programacion.</p>
+  </description>
+  <launchable type="desktop-id">com.meacore.meacode-studio.desktop</launchable>
+  <categories>
+    <category>Development</category>
+    <category>IDE</category>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>IDE</keyword>
+    <keyword>Code</keyword>
+    <keyword>Editor</keyword>
+    <keyword>AI</keyword>
+    <keyword>Programming</keyword>
+  </keywords>
+  <url type="homepage">https://github.com/MeaCore-Enterprise/MeaCode-Studio</url>
+  <url type="bugtracker">https://github.com/MeaCore-Enterprise/MeaCode-Studio/issues</url>
+  <content_rating type="oars-1.1"/>
+</component>
