@@ -1,5 +1,8 @@
 name: Release Windows
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     tags:
@@ -63,13 +66,18 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
+
+      - name: Get pnpm store path
+        id: pnpm-store
+        shell: pwsh
+        run: |
+          $store = pnpm store path
+          "path=$store" >> $env:GITHUB_OUTPUT
 
       - name: Cache pnpm store
         uses: actions/cache@v4
         with:
-          path: ${{ env.PNPM_HOME }}\store
+          path: ${{ steps.pnpm-store.outputs.path }}
           key: windows-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             windows-pnpm-
