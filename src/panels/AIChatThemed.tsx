@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { chatCompletion, type NexusifyMessage } from '../ipc/bridge'
+import { chatCompletion, resolveModelForTask, type NexusifyMessage } from '../ipc/bridge'
 import {
   loadAISettings,
   saveAISettings,
@@ -14,6 +14,8 @@ type Message = {
   role: 'user' | 'assistant'
   content: string
   loading?: boolean
+  /** Solo respuestas del asistente: modelo realmente usado */
+  usedModel?: string
 }
 
 const PROVIDER_LABELS: Record<AIProviderMode, string> = {
@@ -104,7 +106,8 @@ export const AIChatThemed: React.FC = () => {
     ]
 
     try {
-      const response = await chatCompletion(settings, history)
+      const modelId = await resolveModelForTask(settings, 'chat', userMsg.content)
+      const { content, model: usedModel } = await chatCompletion(settings, history, 0.7, modelId)
 
       setMessages((prev) => {
         const next = [...prev]
@@ -113,8 +116,9 @@ export const AIChatThemed: React.FC = () => {
           next[loadingIndex] = {
             id: next[loadingIndex].id,
             role: 'assistant',
-            content: response,
+            content,
             loading: false,
+            usedModel,
           }
         }
         return next
@@ -143,8 +147,12 @@ export const AIChatThemed: React.FC = () => {
       <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800 bg-neutral-900/80">
         <div className="flex flex-col gap-1 min-w-0">
           <span className="font-semibold text-neutral-100 text-[11px]">AI Chat</span>
-          <span className="text-[9px] text-neutral-500 truncate" title={settings.model}>
-            {PROVIDER_LABELS[settings.mode]} · {settings.model || 'sin modelo'}
+          <span
+            className="text-[9px] text-neutral-500 truncate"
+            title={settings.modelSelection === 'auto_best' ? 'Selección automática' : settings.model}
+          >
+            {PROVIDER_LABELS[settings.mode]} ·{' '}
+            {settings.modelSelection === 'auto_best' ? 'modelo automático' : settings.model || 'sin modelo'}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -185,7 +193,9 @@ export const AIChatThemed: React.FC = () => {
             ))}
           </select>
 
-          <label className="block text-[10px] text-neutral-400">URL base (sin /chat/completions)</label>
+          <label className="block text-[10px] text-neutral-400">
+            URL base (incluye /v1 para OpenAI/Ollama; sin /chat/completions)
+          </label>
           <input
             type="text"
             value={settings.baseUrl}
@@ -195,10 +205,29 @@ export const AIChatThemed: React.FC = () => {
           />
           <p className="text-[9px] text-neutral-600">
             {settings.mode === 'ollama'
-              ? 'Por defecto http://127.0.0.1:11434 — endpoint OpenAI: /v1/chat/completions'
+              ? 'Ej: http://127.0.0.1:11434/v1 — se usa GET /v1/models y POST /v1/chat/completions'
               : settings.mode === 'nexusify'
               ? 'https://api.nexusify.co/v1'
               : 'Ej: https://api.openai.com/v1 o http://localhost:1234/v1 (LM Studio)'}
+          </p>
+
+          <label className="block text-[10px] text-neutral-400">Modelo</label>
+          <select
+            value={settings.modelSelection}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                modelSelection: e.target.value === 'auto_best' ? 'auto_best' : 'manual',
+              }))
+            }
+            className="w-full text-[10px] bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-neutral-200"
+          >
+            <option value="manual">Manual (indicas el ID abajo)</option>
+            <option value="auto_best">Automático (mejor para código/chat según lista de la API)</option>
+          </select>
+          <p className="text-[9px] text-neutral-600">
+            En automático se consulta <code className="text-neutral-400">/v1/models</code> y se elige el más capaz
+            por heurística (GPT-4, Claude, Gemini, Ollama grandes, etc.).
           </p>
 
           {settings.mode !== 'ollama' && (
@@ -214,12 +243,22 @@ export const AIChatThemed: React.FC = () => {
             </>
           )}
 
-          <label className="block text-[10px] text-neutral-400">Modelo (ID exacto)</label>
+          <label className="block text-[10px] text-neutral-400">
+            {settings.modelSelection === 'auto_best'
+              ? 'Modelo de respaldo (si falla listar modelos)'
+              : 'ID del modelo'}
+          </label>
           <input
             type="text"
             value={settings.model}
             onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
-            placeholder={settings.mode === 'ollama' ? 'llama3.2, mistral, codellama…' : 'gpt-4o-mini, claude-…'}
+            placeholder={
+              settings.modelSelection === 'auto_best'
+                ? 'Opcional: ej. llama3.2'
+                : settings.mode === 'ollama'
+                  ? 'llama3.2, mistral, codellama…'
+                  : 'gpt-4o, claude-3-5-sonnet…'
+            }
             className="w-full text-[10px] bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-neutral-200"
           />
 
@@ -246,7 +285,16 @@ export const AIChatThemed: React.FC = () => {
             {m.loading ? (
               <span className="text-neutral-400 italic">Pensando...</span>
             ) : (
-              <span className="text-neutral-200 whitespace-pre-wrap">{m.content}</span>
+              <div className="mt-0.5">
+                <div className="text-neutral-200 whitespace-pre-wrap">{m.content}</div>
+                {m.role === 'assistant' && m.usedModel && (
+                  <div className="mt-1 flex justify-end">
+                    <span className="text-[9px] text-neutral-500 border border-neutral-700 rounded px-1.5 py-0.5">
+                      modelo: {m.usedModel}
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         ))}

@@ -1,19 +1,4 @@
-# Build y release al pushear un tag de versión.
-#
-# Flujo recomendado:
-#   1. Asegúrate de que package.json, src-tauri/Cargo.toml y
-#      src-tauri/tauri.conf.json tienen la misma versión semver.
-#   2. Crea y pushea el tag:
-#        git tag v1.0.0 && git push origin v1.0.0
-#   3. El workflow valida versiones, compila, firma (si hay claves) y crea el release.
-#
-# Secrets opcionales para firmar y activar el auto-updater:
-#   - TAURI_SIGNING_PRIVATE_KEY          → clave privada en base64
-#   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD → contraseña de la clave
-#
-# Sin esos secrets el build funciona pero el auto-updater no estará disponible.
-
-name: Build and Release — Windows
+name: Release Windows
 
 on:
   push:
@@ -23,102 +8,55 @@ on:
   workflow_dispatch:
     inputs:
       draft:
-        description: 'Crear como borrador (draft)'
+        description: 'Crear release como draft'
         type: boolean
         default: true
       prerelease:
-        description: 'Marcar como pre-release'
+        description: 'Marcar release como prerelease'
         type: boolean
         default: false
 
-# En releases NO cancelamos: un release a medias sería peor que dejarlo terminar.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release-windows:
-    name: Release — Windows x64
+  release:
+    name: Build + Release (Windows x64)
     runs-on: windows-latest
     permissions:
       contents: write
 
     steps:
-      # ─── 1. CHECKOUT ────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ─── 2. EXTRAER VERSIÓN DEL TAG ─────────────────────────────────────────
       - name: Extract version from tag
         id: version
         shell: pwsh
         run: |
-          $tag     = "${{ github.ref_name }}"
+          $tag = "${{ github.ref_name }}"
           $version = $tag -replace '^v', ''
-          Write-Host "Tag: $tag  →  Version: $version"
-          "tag=$tag"     >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
 
-      # ─── 3. VALIDAR VERSIONES ───────────────────────────────────────────────
       - name: Validate version consistency
         shell: pwsh
         run: |
-          $cargoRaw  = Get-Content src-tauri/Cargo.toml -Raw
-          $pkgRaw    = Get-Content package.json -Raw
-          $tauriRaw  = Get-Content src-tauri/tauri.conf.json -Raw
+          $cargoRaw = Get-Content src-tauri/Cargo.toml -Raw
+          $pkgRaw = Get-Content package.json -Raw
+          $tauriRaw = Get-Content src-tauri/tauri.conf.json -Raw
 
-          $cargoVer  = [regex]::Match($cargoRaw,  '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
-          $pkgVer    = ($pkgRaw  | ConvertFrom-Json).version
-          $tauriVer  = ($tauriRaw | ConvertFrom-Json).package.version
-          $tagVer    = "${{ steps.version.outputs.version }}"
+          $cargoVer = [regex]::Match($cargoRaw, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          $pkgVer = ($pkgRaw | ConvertFrom-Json).version
+          $tauriVer = ($tauriRaw | ConvertFrom-Json).package.version
+          $tagVer = "${{ steps.version.outputs.version }}"
 
-          Write-Host "Cargo.toml:       $cargoVer"
-          Write-Host "package.json:     $pkgVer"
-          Write-Host "tauri.conf.json:  $tauriVer"
-          Write-Host "Tag:              $tagVer"
+          if ($cargoVer -ne $pkgVer) { Write-Error "Cargo.toml != package.json"; exit 1 }
+          if ($cargoVer -ne $tauriVer) { Write-Error "Cargo.toml != tauri.conf.json"; exit 1 }
+          if ($cargoVer -ne $tagVer) { Write-Error "Cargo.toml != tag"; exit 1 }
 
-          $errors = 0
-          if ($cargoVer -ne $pkgVer)   { Write-Error "Mismatch: Cargo ($cargoVer) != package.json ($pkgVer)"; $errors++ }
-          if ($cargoVer -ne $tauriVer) { Write-Error "Mismatch: Cargo ($cargoVer) != tauri.conf.json ($tauriVer)"; $errors++ }
-          if ($cargoVer -ne $tagVer)   { Write-Error "Mismatch: Cargo ($cargoVer) != tag ($tagVer)"; $errors++ }
-
-          if ($errors -gt 0) { exit 1 }
-          Write-Host "✅ All versions match: $cargoVer"
-          CARGO_VERSION=$(grep -E '^version\s*=' src-tauri/Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
-          PACKAGE_VERSION=$(grep -E '"version"' package.json | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
-          TAURI_CONF_VERSION=$(grep -E '"version"' src-tauri/tauri.conf.json | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d ' ')
-          TAG_VERSION="${{ steps.version.outputs.version }}"
-          
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "package.json version: $PACKAGE_VERSION"
-          echo "tauri.conf.json version: $TAURI_CONF_VERSION"
-          echo "Tag version: $TAG_VERSION"
-          
-          if [ "$CARGO_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "❌ ERROR: Version mismatch between Cargo.toml and package.json!"
-            echo "  Cargo.toml: $CARGO_VERSION"
-            echo "  package.json: $PACKAGE_VERSION"
-            exit 1
-          fi
-
-          if [ "$CARGO_VERSION" != "$TAURI_CONF_VERSION" ]; then
-            echo "❌ ERROR: Version mismatch between Cargo.toml and src-tauri/tauri.conf.json!"
-            echo "  Cargo.toml: $CARGO_VERSION"
-            echo "  tauri.conf.json: $TAURI_CONF_VERSION"
-            exit 1
-          fi
-          
-          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
-            echo "❌ ERROR: Tag version does not match Cargo.toml version!"
-            echo "  Tag: $TAG_VERSION"
-            echo "  Cargo.toml: $CARGO_VERSION"
-            exit 1
-          fi
-          
-          echo "✅ All versions match: $CARGO_VERSION"
-
-      # ─── 4. TOOLCHAIN — NODE + PNPM ─────────────────────────────────────────
-      - name: Setup Node.js 20 LTS
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -136,13 +74,12 @@ jobs:
           restore-keys: |
             windows-pnpm-
 
-      # ─── 5. TOOLCHAIN — RUST ────────────────────────────────────────────────
-      - name: Setup Rust stable (x86_64-pc-windows-msvc)
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Cache Cargo registry + build artifacts
+      - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
@@ -154,68 +91,16 @@ jobs:
             windows-cargo-release-
             windows-cargo-
 
-      # ─── 6. VERIFICAR ACTIVOS NECESARIOS ────────────────────────────────────
-      - name: Verify required Windows icons
-        shell: pwsh
-        run: |
-          $icons = @(
-            "src-tauri/icons/icon.ico",
-            "src-tauri/icons/32x32.png",
-            "src-tauri/icons/128x128.png"
-          )
-          foreach ($icon in $icons) {
-            if (Test-Path $icon) { Write-Host "✓ $icon" }
-            else { Write-Error "✗ Missing: $icon"; exit 1 }
-          }
-
-      # ─── 7. COMPROBAR CLAVES DE FIRMA ───────────────────────────────────────
-      - name: Check signing keys availability
-        id: signing
-        shell: pwsh
-        run: |
-          $hasKey  = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" -ne ""
-          $hasPwd  = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" -ne ""
-          $canSign = $hasKey -and $hasPwd
-
-          if ($canSign) {
-            Write-Host "✅ Signing keys present — build will be signed and auto-updater will work."
-            "enabled=true" >> $env:GITHUB_OUTPUT
-          } else {
-            Write-Host "⚠️  Signing keys missing — build will work but auto-updater will NOT be available."
-            Write-Host "    TAURI_SIGNING_PRIVATE_KEY:          $(if ($hasKey) { 'present' } else { 'MISSING' })"
-            Write-Host "    TAURI_SIGNING_PRIVATE_KEY_PASSWORD: $(if ($hasPwd) { 'present' } else { 'MISSING' })"
-            "enabled=false" >> $env:GITHUB_OUTPUT
-          }
-
-      # ─── 8. FRONTEND ────────────────────────────────────────────────────────
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build frontend
         run: pnpm build
 
-<<<<<<< HEAD
-      - name: Build Tauri app
-        id: build_tauri
+      - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: .
-          args: --target ${{ matrix.target }}
-          tagName: ${{ github.ref_name }}
-          releaseName: 'MeaCode Studio ${{ github.ref_name }}'
-          releaseBody: |
-            ## MeaCode Studio ${{ github.ref_name }}
-=======
-      # ─── 9. BUILD TAURI + CREAR RELEASE ─────────────────────────────────────
-      - name: Build Tauri app and publish release
-        id: tauri_build
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: .
           args: --target x86_64-pc-windows-msvc
@@ -223,110 +108,28 @@ jobs:
           releaseName: 'MeaCode Studio ${{ steps.version.outputs.tag }}'
           releaseBody: |
             ## MeaCode Studio ${{ steps.version.outputs.tag }}
->>>>>>> bb16f29d0d784dce49612e99b19e3a77c8e98040
 
-            ${{ steps.signing.outputs.enabled != 'true' && '> ⚠️ **Unsigned build** — el auto-updater no está disponible en esta versión. La instalación manual funciona correctamente.' || '' }}
-
-            ### ✨ Características
-            - 🚀 IDE IA-first con acciones contextuales sobre código
-            - 💬 Chat IA integrado (Nexusify API)
-            - 📝 Editor Monaco con soporte LSP
-            - 🖥️ Terminal integrada (xterm.js)
-            - 📁 Explorador de archivos
-            - 🔍 Búsqueda rápida (`Ctrl+P`)
-            - ⌨️ Command Palette (`Ctrl+Shift+P`)
-            - 💾 Persistencia de sesión entre reinicios
-
-            ### 🎯 Acciones IA sobre código
-            - **Explain this** — explica el código seleccionado
-            - **Fix error** — corrige errores automáticamente
-            - **Refactor** — mejora el código manteniendo su funcionalidad
-
-            ### 📦 Instalación Windows
-            Descarga el archivo `.exe` (instalador NSIS) o `.msi` y ejecútalo.
-            Windows puede mostrar una advertencia SmartScreen — haz clic en **"Más información → Ejecutar de todas formas"**.
-
-            Más información en el [README](https://github.com/${{ github.repository }}/blob/main/README.md).
+            Build oficial para Windows x64.
+            Incluye instalador `.exe` (NSIS) y `.msi`.
           releaseDraft: ${{ github.event.inputs.draft != 'false' }}
           prerelease: ${{ github.event.inputs.prerelease == 'true' }}
 
-      # ─── 10. VERIFICAR BINARIO Y REPORTAR TAMAÑO ────────────────────────────
-      - name: Verify binary and report artifact sizes
-        shell: pwsh
-        run: |
-          $binaryPath = "src-tauri\target\x86_64-pc-windows-msvc\release\meacode-studio.exe"
-          if (Test-Path $binaryPath) {
-            $sizeMB = [math]::Round((Get-Item $binaryPath).Length / 1MB, 2)
-            Write-Host "✅ meacode-studio.exe  ($sizeMB MB)"
-          } else {
-            Write-Error "❌ Binary not found: $binaryPath"
-            exit 1
-          }
-
-          $bundleDir = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
-          if (Test-Path $bundleDir) {
-            Write-Host ""
-            Write-Host "Bundle artifacts:"
-            Get-ChildItem $bundleDir -Recurse -File | ForEach-Object {
-              $sizeMB = [math]::Round($_.Length / 1MB, 2)
-              Write-Host "  $($_.Name)  ($sizeMB MB)"
-            }
-          }
-
-      # ─── 11. GENERAR CHECKSUMS SHA-256 ──────────────────────────────────────
-      - name: Generate SHA-256 checksums
+      - name: Generate checksums
         shell: pwsh
         run: |
           $bundleDir = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
-          $outDir    = "checksums"
+          $outDir = "checksums"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-
-          $extensions = @("*.exe", "*.msi", "*.zip", "*.nsis.zip")
-          $files = Get-ChildItem $bundleDir -Recurse -Include $extensions -File
-
-          if ($files.Count -eq 0) {
-            Write-Host "⚠️  No bundle files found for checksums."
-          } else {
-            $allChecksums = @()
-            foreach ($file in $files) {
-              $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
-              $line = "$hash  $($file.Name)"
-              $allChecksums += $line
-              Write-Host "  $line"
-            }
-            $allChecksums | Set-Content "$outDir\checksums-windows-x64.sha256"
-            Write-Host ""
-            Write-Host "✅ Checksums written to $outDir\checksums-windows-x64.sha256"
+          $files = Get-ChildItem $bundleDir -Recurse -Include *.exe,*.msi,*.zip -File
+          foreach ($file in $files) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($file.Name)" | Add-Content "$outDir\checksums-windows-x64.sha256"
           }
 
-      # ─── 12. SUBIR ARTEFACTOS ───────────────────────────────────────────────
-      - name: Upload Windows installers as artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: MeaCode-Studio-${{ steps.version.outputs.version }}-windows-x64
-          path: |
-            src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\*.exe
-            src-tauri\target\x86_64-pc-windows-msvc\release\bundle\msi\*.msi
-          retention-days: 90
-          if-no-files-found: warn
-
-      - name: Upload checksums as artifact
-        if: success() && hashFiles('checksums/**') != ''
+      - name: Upload checksums artifact
+        if: hashFiles('checksums/**') != ''
         uses: actions/upload-artifact@v4
         with:
           name: checksums-${{ steps.version.outputs.version }}-windows-x64
           path: checksums\
           retention-days: 90
-
-      # ─── 13. LOGS EN CASO DE FALLO ──────────────────────────────────────────
-      - name: Upload build logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs-release-windows-${{ github.run_number }}
-          path: |
-            src-tauri\target\**\*.log
-            src-tauri\target\**\build.log
-          retention-days: 14
-          if-no-files-found: ignore

@@ -1,5 +1,11 @@
 import { invoke } from '@tauri-apps/api/tauri'
-import { getChatCompletionsUrl, loadAISettings, type AISettings } from '../utils/aiSettings'
+import {
+  getChatCompletionsUrl,
+  getModelsListUrl,
+  loadAISettings,
+  type AISettings,
+} from '../utils/aiSettings'
+import { pickBestChatModel, type ModelTaskKind } from '../utils/aiModelPick'
 
 export async function callKernel<T = unknown>(
   command: string,
@@ -209,12 +215,94 @@ export type NexusifyChatRequest = {
 }
 
 export type NexusifyChatResponse = {
+  model?: string
   choices: Array<{
     message: {
       role: string
       content: string
     }
   }>
+}
+
+export type ChatCompletionResult = {
+  content: string
+  /** Modelo usado en la petición o el que devuelve la API */
+  model: string
+}
+
+const LIST_MODELS_TIMEOUT_MS = 20_000
+
+/**
+ * Lista IDs de modelos desde GET /v1/models (OpenAI-compatible).
+ */
+export async function listChatModels(settings: AISettings): Promise<string[]> {
+  if (settings.mode !== 'ollama' && !settings.apiKey?.trim()) {
+    throw new Error('API key no configurada')
+  }
+
+  const url = getModelsListUrl(settings)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), LIST_MODELS_TIMEOUT_MS)
+
+  const headers: Record<string, string> = {}
+  if (settings.apiKey?.trim()) {
+    headers['Authorization'] = `Bearer ${settings.apiKey.trim()}`
+  }
+
+  try {
+    const response = await fetch(url, { headers, signal: controller.signal })
+    if (!response.ok) {
+      const err = await response.text().catch(() => '')
+      throw new Error(`Listar modelos: HTTP ${response.status} ${err.slice(0, 200)}`)
+    }
+
+    const data = (await response.json()) as {
+      data?: Array<{ id?: string }>
+      models?: Array<{ name?: string; model?: string }>
+    }
+
+    if (Array.isArray(data.data)) {
+      return data.data.map((x) => x.id).filter((id): id is string => !!id?.trim())
+    }
+    if (Array.isArray(data.models)) {
+      return data.models
+        .map((m) => m.name || m.model)
+        .filter((id): id is string => !!id?.trim())
+    }
+
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Resuelve el ID de modelo: manual o el más capaz según heurística (lista /models).
+ */
+export async function resolveModelForTask(
+  settings: AISettings,
+  kind: ModelTaskKind,
+  userHint?: string,
+): Promise<string> {
+  if (settings.modelSelection !== 'auto_best') {
+    const m = settings.model.trim()
+    if (!m) throw new Error('Modelo no configurado')
+    return m
+  }
+
+  try {
+    const ids = await listChatModels(settings)
+    if (ids.length === 0) {
+      const fb = settings.model.trim()
+      if (fb) return fb
+      throw new Error('La API no devolvió modelos; indica un modelo de respaldo.')
+    }
+    return pickBestChatModel(ids, kind, userHint)
+  } catch (e) {
+    const fb = settings.model.trim()
+    if (fb) return fb
+    throw e instanceof Error ? e : new Error(String(e))
+  }
 }
 
 export type AIError = {
@@ -265,16 +353,20 @@ const CHAT_TIMEOUT_MS = 120_000
 
 /**
  * Chat completions con API estilo OpenAI (Nexusify, OpenAI, LM Studio, Ollama /v1, etc.).
+ * `modelId` obligatorio (usar `resolveModelForTask` si hace falta).
  */
 export async function chatCompletion(
   settings: AISettings,
   messages: NexusifyMessage[],
   temperature: number = 0.7,
-): Promise<string> {
+  modelId?: string,
+): Promise<ChatCompletionResult> {
   if (settings.mode !== 'ollama' && !settings.apiKey?.trim()) {
     throw new Error('API key no configurada')
   }
-  if (!settings.model?.trim()) {
+
+  const model = (modelId ?? settings.model).trim()
+  if (!model) {
     throw new Error('Modelo no configurado')
   }
 
@@ -294,7 +386,7 @@ export async function chatCompletion(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: settings.model.trim(),
+        model,
         messages,
         temperature,
       }),
@@ -309,7 +401,9 @@ export async function chatCompletion(
     }
 
     const data: NexusifyChatResponse = await response.json()
-    return data.choices[0]?.message?.content || 'Sin respuesta'
+    const content = data.choices[0]?.message?.content || 'Sin respuesta'
+    const reported = (data.model && data.model.trim()) || model
+    return { content, model: reported }
   } catch (err) {
     const maybeErr = err as { name?: string }
     if (maybeErr?.name === 'AbortError') {
@@ -330,17 +424,20 @@ export async function chatWithNexusify(
   temperature: number = 0.7,
 ): Promise<string> {
   const base = loadAISettings()
-  return chatCompletion(
+  const r = await chatCompletion(
     {
       ...base,
       mode: 'nexusify',
       apiKey,
       model,
+      modelSelection: 'manual',
       baseUrl: 'https://api.nexusify.co/v1',
     },
     messages,
     temperature,
+    model,
   )
+  return r.content
 }
 
 // AI Code Actions
@@ -350,6 +447,7 @@ export async function explainCodeWithAI(
   settings?: AISettings,
 ): Promise<string> {
   const s = settings ?? loadAISettings()
+  const modelId = await resolveModelForTask(s, 'code', code.slice(0, 4000))
   const messages: NexusifyMessage[] = [
     {
       role: 'system',
@@ -361,7 +459,8 @@ export async function explainCodeWithAI(
     },
   ]
 
-  return chatCompletion(s, messages)
+  const r = await chatCompletion(s, messages, 0.7, modelId)
+  return r.content
 }
 
 export async function fixErrorWithAI(
@@ -371,6 +470,7 @@ export async function fixErrorWithAI(
   settings?: AISettings,
 ): Promise<string> {
   const s = settings ?? loadAISettings()
+  const modelId = await resolveModelForTask(s, 'code', `${error}\n${code}`.slice(0, 4000))
   const messages: NexusifyMessage[] = [
     {
       role: 'system',
@@ -382,7 +482,8 @@ export async function fixErrorWithAI(
     },
   ]
 
-  return chatCompletion(s, messages)
+  const r = await chatCompletion(s, messages, 0.7, modelId)
+  return r.content
 }
 
 export async function refactorCodeWithAI(
@@ -391,6 +492,7 @@ export async function refactorCodeWithAI(
   settings?: AISettings,
 ): Promise<string> {
   const s = settings ?? loadAISettings()
+  const modelId = await resolveModelForTask(s, 'code', code.slice(0, 4000))
   const messages: NexusifyMessage[] = [
     {
       role: 'system',
@@ -402,5 +504,6 @@ export async function refactorCodeWithAI(
     },
   ]
 
-  return chatCompletion(s, messages)
+  const r = await chatCompletion(s, messages, 0.7, modelId)
+  return r.content
 }
