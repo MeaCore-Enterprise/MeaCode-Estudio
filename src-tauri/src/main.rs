@@ -3,8 +3,7 @@
 use tokio::fs;
 use std::process::Stdio;
 use tokio::process::Command;
-use tauri::api::dialog::blocking::FileDialogBuilder;
-
+use tauri::api::dialog::blocking::{FileDialogBuilder, MessageDialogBuilder, MessageDialogButtons, MessageDialogKind};
 use kernel_lsp::{engine_completions, engine_diagnostics, engine_hover};
 use serde::Serialize;
 use tokio::time::{timeout, Duration};
@@ -210,6 +209,61 @@ async fn save_file(path: String, content: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
+async fn create_file(path: String) -> Result<bool, String> {
+    // Check if it already exists
+    if std::path::Path::new(&path).exists() {
+        return Err("File already exists".into());
+    }
+    fs::write(&path, "").await.map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+async fn create_dir(path: String) -> Result<bool, String> {
+    if std::path::Path::new(&path).exists() {
+        return Err("Directory already exists".into());
+    }
+    fs::create_dir_all(&path).await.map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+async fn delete_item(path: String) -> Result<bool, String> {
+    let path_obj = std::path::Path::new(&path);
+    if !path_obj.exists() {
+        return Err("Item does not exist".into());
+    }
+    
+    // Mostramos confirmación
+    let name = path_obj.file_name().unwrap_or_default().to_string_lossy();
+    let is_dir = path_obj.is_dir();
+    let confirm = MessageDialogBuilder::new("Confirmación", format!("¿Estás seguro de que quieres eliminar {} '{}'?", if is_dir { "la carpeta" } else { "el archivo" }, name))
+        .buttons(MessageDialogButtons::OkCancelCustom("Eliminar".into(), "Cancelar".into()))
+        .kind(MessageDialogKind::Warning)
+        .show();
+
+    if confirm {
+        if is_dir {
+            fs::remove_dir_all(&path).await.map_err(|e| e.to_string())?;
+        } else {
+            fs::remove_file(&path).await.map_err(|e| e.to_string())?;
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+async fn rename_item(old_path: String, new_path: String) -> Result<bool, String> {
+    if std::path::Path::new(&new_path).exists() {
+        return Err("Destination already exists".into());
+    }
+    fs::rename(&old_path, &new_path).await.map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
 async fn save_file_as(content: String) -> Result<Option<String>, String> {
     let path = FileDialogBuilder::new()
         .set_title("Save File As")
@@ -379,7 +433,11 @@ fn main() {
             get_workspace_info,
             lsp_completion,
             lsp_hover,
-            lsp_diagnostics
+            lsp_diagnostics,
+            create_file,
+            create_dir,
+            delete_item,
+            rename_item
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

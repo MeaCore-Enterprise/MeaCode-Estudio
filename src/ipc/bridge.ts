@@ -143,6 +143,43 @@ export async function saveFile(path: string, content: string): Promise<boolean> 
   }
 }
 
+export async function createFile(path: string): Promise<boolean> {
+  try {
+    return await callKernel<boolean>('create_file', { path })
+  } catch (err) {
+    console.error('Error calling create_file', err)
+    return false
+  }
+}
+
+export async function createDir(path: string): Promise<boolean> {
+  try {
+    return await callKernel<boolean>('create_dir', { path })
+  } catch (err) {
+    console.error('Error calling create_dir', err)
+    return false
+  }
+}
+
+export async function deleteItem(path: string): Promise<boolean> {
+  try {
+    return await callKernel<boolean>('delete_item', { path })
+  } catch (err) {
+    console.error('Error calling delete_item', err)
+    return false
+  }
+}
+
+export async function renameItem(oldPath: string, newPath: string): Promise<boolean> {
+  try {
+    // Note: Rust signature is rename_item(old_path, new_path) which converts to camelCase in TS bridge normally or we use exactly the payload keys
+    return await callKernel<boolean>('rename_item', { oldPath, newPath })
+  } catch (err) {
+    console.error('Error calling rename_item', err)
+    return false
+  }
+}
+
 export async function saveFileAs(content: string): Promise<string | null> {
   try {
     const path = await callKernel<string | null>('save_file_as', { content })
