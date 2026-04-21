@@ -1,5 +1,5 @@
 import React from 'react'
-import { explainCodeWithAI, fixErrorWithAI, parseAIError } from '../ipc/bridge'
+import { explainCodeWithAI, fixErrorWithAI, parseAIError } from '../../api/bridge'
 import { loadAISettings, isAIConfigured } from '../utils/aiSettings'
 import { showToast } from '../utils/toast'
 

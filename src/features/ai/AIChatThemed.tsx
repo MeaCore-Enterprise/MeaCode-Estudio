@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { chatCompletion, resolveModelForTask, type NexusifyMessage } from '../ipc/bridge'
+import { chatCompletion, resolveModelForTask, type NexusifyMessage } from '../../api/bridge'
 import {
   loadAISettings,
   saveAISettings,
@@ -7,7 +7,7 @@ import {
   defaultBaseUrl,
   type AISettings,
   type AIProviderMode,
-} from '../utils/aiSettings'
+} from '../../shared/utils/aiSettings'
 
 type Message = {
   id: number

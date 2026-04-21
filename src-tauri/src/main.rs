@@ -3,7 +3,8 @@
 use tokio::fs;
 use std::process::Stdio;
 use tokio::process::Command;
-use tauri::api::dialog::blocking::{FileDialogBuilder, MessageDialogBuilder, MessageDialogButtons, MessageDialogKind};
+use tauri::api::dialog::blocking::{FileDialogBuilder, MessageDialogBuilder};
+use tauri::api::dialog::{MessageDialogButtons, MessageDialogKind};
 use kernel_lsp::{engine_completions, engine_diagnostics, engine_hover};
 use serde::Serialize;
 use tokio::time::{timeout, Duration};
@@ -238,7 +239,7 @@ async fn delete_item(path: String) -> Result<bool, String> {
     let name = path_obj.file_name().unwrap_or_default().to_string_lossy();
     let is_dir = path_obj.is_dir();
     let confirm = MessageDialogBuilder::new("Confirmación", format!("¿Estás seguro de que quieres eliminar {} '{}'?", if is_dir { "la carpeta" } else { "el archivo" }, name))
-        .buttons(MessageDialogButtons::OkCancelCustom("Eliminar".into(), "Cancelar".into()))
+        .buttons(MessageDialogButtons::OkCancel)
         .kind(MessageDialogKind::Warning)
         .show();
 

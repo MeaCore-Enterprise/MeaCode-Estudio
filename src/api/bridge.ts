@@ -4,8 +4,8 @@ import {
   getModelsListUrl,
   loadAISettings,
   type AISettings,
-} from '../utils/aiSettings'
-import { pickBestChatModel, type ModelTaskKind } from '../utils/aiModelPick'
+} from '../shared/utils/aiSettings'
+import { pickBestChatModel, type ModelTaskKind } from '../shared/utils/aiModelPick'
 
 export async function callKernel<T = unknown>(
   command: string,

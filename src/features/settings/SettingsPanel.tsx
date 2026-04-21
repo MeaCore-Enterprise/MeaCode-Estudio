@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { useSettings, type Settings } from '../hooks/useSettings'
-import { loadFeatureFlags, toggleFeatureFlag, type FeatureFlagsState } from '../hooks/useFeatureFlags'
+import { useSettings, type Settings } from '../../shared/hooks/useSettings'
+import { loadFeatureFlags, toggleFeatureFlag, type FeatureFlagsState } from '../../shared/hooks/useFeatureFlags'
 
 export type SettingsPanelProps = {
   visible: boolean

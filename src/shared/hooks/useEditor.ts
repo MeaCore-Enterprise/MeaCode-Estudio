@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { Tab } from '../components/TabBar'
 import { detectLanguage } from '../utils/languageUtils'
-import { readFile } from '../ipc/bridge'
+import { readFile } from '../../api/bridge'
 
 export type EditorState = {
   tabs: Tab[]

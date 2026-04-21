@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
-import { MainEditor, type MainEditorProps } from '../editor/MainEditor'
-import { ExplorerPanel } from '../panels/ExplorerPanel'
-import { TerminalThemed } from '../panels/TerminalThemed'
-import { AIChatThemed } from '../panels/AIChatThemed'
+import { MainEditor, type MainEditorProps } from '../features/editor/MainEditor'
+import { ExplorerPanel } from '../features/explorer/ExplorerPanel'
+import { TerminalThemed } from '../features/terminal/TerminalThemed'
+import { AIChatThemed } from '../features/ai/AIChatThemed'
 
 /**
  * NewLayout - Alternative layout component for future iterations

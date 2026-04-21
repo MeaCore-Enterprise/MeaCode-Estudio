@@ -1,12 +1,12 @@
 import React, { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import { Editor, type OnMount, type Monaco } from '@monaco-editor/react'
-import { getLspCompletions, getLspHover, getLspDiagnostics, saveFile, explainCodeWithAI, fixErrorWithAI, refactorCodeWithAI, parseAIError } from '../ipc/bridge'
-import { loadAISettings, isAIConfigured } from '../utils/aiSettings'
-import { showToast } from '../utils/toast'
-import { TabBar, type Tab } from '../components/TabBar'
-import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu'
-import { detectLanguage } from '../utils/languageUtils'
-import { useSettings } from '../hooks/useSettings'
+import { getLspCompletions, getLspHover, getLspDiagnostics, saveFile, explainCodeWithAI, fixErrorWithAI, refactorCodeWithAI, parseAIError } from '../../api/bridge'
+import { loadAISettings, isAIConfigured } from '../../shared/utils/aiSettings'
+import { showToast } from '../../shared/utils/toast'
+import { TabBar, type Tab } from '../../shared/components/TabBar'
+import { ContextMenu, type ContextMenuItem } from '../../shared/components/ContextMenu'
+import { detectLanguage } from '../../shared/utils/languageUtils'
+import { useSettings } from '../../shared/hooks/useSettings'
 
 export type MainEditorProps = {
   tabs: Tab[]

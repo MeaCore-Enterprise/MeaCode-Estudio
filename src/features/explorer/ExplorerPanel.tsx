@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import type { FileEntry } from '../ipc/bridge'
-import { listDir, readFile, createFile, createDir, deleteItem, renameItem } from '../ipc/bridge'
-import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu'
-import { showToast } from '../utils/toast'
+import type { FileEntry } from '../../api/bridge'
+import { listDir, readFile, createFile, createDir, deleteItem, renameItem } from '../../api/bridge'
+import { ContextMenu, type ContextMenuItem } from '../../shared/components/ContextMenu'
+import { showToast } from '../../shared/utils/toast'
 
 export type ExplorerPanelProps = {
   onOpenFile: (file: { path: string; content: string }) => void
