@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeaCode Studio | The AI-First IDE</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <meta name="description" content="MeaCode Studio is a high-performance, modular IDE built for the future of AI-driven development.">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">
+            <img src="meacode_logo_premium.png" alt="MeaCode Logo" id="nav-logo">
+            <span>MeaCode Studio</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#download">Download</a></li>
+            <li><a href="CHANGELOG.md">Changelog</a></li>
+        </ul>
+        <a href="https://github.com/MeaCore-Enterprise/MeaCode-Estudio" class="btn btn-outline">Github</a>
+    </nav>
+
+    <header class="hero">
+        <div class="hero-content">
+            <h1 class="fade-in">Code with the <span class="gradient-text">Speed of AI</span></h1>
+            <p class="fade-in delay-1">MeaCode Studio is a professional, modular IDE designed for high-performance AI-driven development. Sleek, fast, and fully extensible.</p>
+            <div class="hero-btns fade-in delay-2">
+                <a href="#download" class="btn btn-primary">Download v1.0.0</a>
+                <a href="#features" class="btn btn-secondary">Learn More</a>
+            </div>
+        </div>
+        <div class="hero-visual fade-in delay-3">
+            <div class="mockup-container">
+                <img src="meacode_studio_mockup.png" alt="MeaCode Studio Mockup" class="mockup">
+            </div>
+        </div>
+    </header>
+
+    <section id="features" class="features">
+        <div class="section-title">
+            <h2>Modern Architecture, <span class="gradient-text">Infinite Potential</span></h2>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="icon">🤖</div>
+                <h3>AI-First Core</h3>
+                <p>Built-in intelligence that understands your context, not just your code.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🧩</div>
+                <h3>Modular Design</h3>
+                <p>Fragmented architecture for maximum scalability and maintainability.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🦀</div>
+                <h3>Rust Powered</h3>
+                <p>Ultra-fast kernel and multi-root LSP support powered by Rust.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">✨</div>
+                <h3>Rich Aesthetics</h3>
+                <p>A premium UI with glassmorphism and smooth animations for a better dev experience.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="download" class="download-section">
+        <div class="download-card">
+            <h2>Ready to transform your workflow?</h2>
+            <p>Experience the most advanced IDE for the modern era.</p>
+            <div class="download-btns">
+                <a href="#" class="btn btn-primary btn-large">Download for Windows (x64)</a>
+            </div>
+            <p class="version-info">Version 1.0.0 | Requires Windows 10/11</p>
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2026 MeaCore Enterprise. Built with passion for developers.</p>
+    </footer>
+
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+</html>
